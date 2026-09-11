@@ -1,46 +1,78 @@
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Kinjuriu/ForecastingDebtCollections/blob/main/notebooks/01_data_cleaning.ipynb)
+![Python](https://img.shields.io/badge/python-3-blue)
+![Jupyter](https://img.shields.io/badge/jupyter-notebook-orange?logo=jupyter)
+
 # Forecasting Debt Collections
 
 Cleaning and analysing PayGo (pay-as-you-go) solar financing data, contracts,
 payments, customer calls, service tickets, and collections outreach, to build a
-short-term collections forecast and to evaluate whether a regional customer
-outreach pilot is worth scaling. The source data is not committed here; it stays
-local and is only read by the notebooks (see Data below).
+short-term collections forecast and evaluate a regional customer outreach pilot.
+Source data is never committed here; it stays local and is only read by the
+notebooks (see Data below).
 
-## Workflow
+## How it works
 
-1. **`notebooks/01_data_cleaning.ipynb`** takes the five raw source files, cleans
-   and standardises each one, runs cross-file integrity and timing audits, and
-   splits the result into a development set and a held-out test set so a forecast
-   can be built without peeking at the answer. It does not do feature engineering
-   or modelling.
-2. **A forecasting / pilot-evaluation notebook** will read the cleaned
-   development data, build the collections forecast, and evaluate the outreach
-   pilot. It has not been built yet, see Status below.
-3. Both stages currently run as Colab notebooks: upload the source CSVs at the
-   start of a session, download the outputs at the end. Converting them to plain
-   `.py` modules that read and write local paths directly is planned but not
-   done yet.
+```mermaid
+flowchart LR
+    A[Raw source data] --> B[01_data_cleaning: clean, audit, split]
+    B --> C[Development set, through Jun 2026]
+    B --> D[Sealed test set, Jul-Sep 2026]
+    C --> E[Feature engineering]
+    E --> F[Forecasting]
+```
+
+The cleaning notebook does not do feature engineering or modelling. It splits
+the data into a development period and a held-out test period so a forecast
+can be evaluated without peeking at the answer.
+
+## Project structure
+
+```
+.
+├── notebooks/
+│   ├── 01_data_cleaning.ipynb   # run this in Colab
+│   └── 01_data_cleaning.py      # jupytext mirror, kept in sync automatically
+├── data_dictionary.txt          # column definitions for the five source files
+├── AI_WORKFLOW.md               # how this repo's code is written/edited with AI
+├── tools/strip_notebook_outputs.py
+├── requirements-dev.txt         # jupytext + nbdime, for working on this repo
+└── .gitattributes                # tells git to diff notebooks with nbdime
+```
+
+## Notebook versioning
+
+Notebooks are paired with [Jupytext](https://jupytext.readthedocs.io): every
+`.ipynb` has a `.py` twin kept in sync, and the `.py` file is what gives clean,
+readable diffs (a raw notebook diff is mostly unreadable JSON). git is also
+configured to diff `.ipynb` files with [nbdime](https://nbdime.readthedocs.io)
+directly (see `.gitattributes`), and GitHub renders notebook diffs natively on
+this page. Commit history on `notebooks/01_data_cleaning.ipynb` reflects real
+revisions, not a single drop-in file.
+
+To work on a notebook locally: `pip install -r requirements-dev.txt`, edit
+either the `.ipynb` or the `.py`, then run `jupytext --sync notebooks/01_data_cleaning.ipynb`
+to bring the other back in sync before committing.
 
 ## Status
 
-- [x] Data cleaning notebook: done (this is the third revision; see the commit
-      history on `notebooks/01_data_cleaning.ipynb` for how it evolved)
-- [ ] Forecasting / modelling notebook: not started
-- [ ] Pilot evaluation: not started
-- [ ] Convert notebooks to `.py`
+- [x] Data cleaning: done, versioned
+- [ ] Feature engineering: not started
+- [ ] Forecasting: not started
+- [ ] Convert notebooks to `.py` modules: not started
 
-## Where things are
+## Getting started
 
-- `notebooks/` — the versioned notebook(s). Only the current, working version of
-  each stage lives here; earlier drafts stay local.
-- `data_dictionary.txt` — column-level definitions for the five source files.
-- `AI_WORKFLOW.md` — how this repo's code gets written and edited with AI
-  assistance, without burning tokens on things that don't need it.
-- `tools/strip_notebook_outputs.py` — clears cell outputs before a notebook is
-  committed, since outputs can contain real data and this repo is public.
+```bash
+git clone https://github.com/Kinjuriu/ForecastingDebtCollections.git
+cd ForecastingDebtCollections
+pip install -r requirements-dev.txt
+```
+
+Open `notebooks/01_data_cleaning.ipynb` in Colab (badge above) or locally, and
+upload the five source CSVs when prompted (they're not included in this repo).
 
 ## Data
 
-Raw source files and any generated outputs (cleaned CSVs, audit files, ZIPs) are
-intentionally excluded from version control; see `.gitignore`. Only cleaned code
-and documentation are tracked.
+Raw source files and any generated outputs are intentionally excluded from
+version control; see `.gitignore`. Only cleaned code and documentation are
+tracked.
