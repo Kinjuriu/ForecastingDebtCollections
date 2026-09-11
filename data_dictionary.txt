@@ -1,0 +1,61 @@
+Data dictionary
+
+--------------------------------------------------------------------
+contracts.csv
+--------------------------------------------------------------------
+contractid          unique identifier of the contract
+sales_person_id     unique ID of the person who sold the contract
+sales_month         last day of the month the contract was registered
+region              region in which the customer lives
+customer_gender     customer gender (if given)
+household_size      number of people in the customer's household (if given)
+occupation          occupation of the customer (if given)
+contract_type       CASH (all paid upfront) or FINANCED (PayGo sale)
+product             the name of the SKU
+price_usd           total price in USD, including the deposit
+payment_frequency   for FINANCED contracts, how often the customer is
+                    required to pay. NONE for CASH.
+perc_deposit        for CASH this is 1. For FINANCED it is the deposit
+                    required, expressed as a percentage of total value.
+daily_amount_usd    amount the customer is required to pay each day in USD.
+                    Even where they are not required to pay daily, this
+                    value is expressed as the amount needed per DAY.
+tenor_length        number of DAYS the customer must pay to fully pay off
+                    the contract. Expressed in days even where the payment
+                    frequency is weekly or monthly.
+
+--------------------------------------------------------------------
+payments.csv
+--------------------------------------------------------------------
+contract_id         unique identifier of the contract
+pay_month           last day of the month the payment was made in
+total_paid          total amount paid in that month, in USD
+
+--------------------------------------------------------------------
+calls.csv
+--------------------------------------------------------------------
+contractid          unique identifier of the contract
+call_date           date the customer called
+call_reason         reason for the call
+
+--------------------------------------------------------------------
+service_tickets.csv
+--------------------------------------------------------------------
+contractid          unique identifier of the contract
+ticket_date         the date the customer brought the product in
+ticket_reason       the reason the customer brought the product in
+ticket_outcome      the outcome after the team assessed the product
+
+--------------------------------------------------------------------
+collections_outreach.csv
+--------------------------------------------------------------------
+Log of customers contacted under the two regional collections pilots
+that ran from April 2026. Regions not listed here ran no pilot.
+
+contractid          unique identifier of the contract contacted
+contact_month       last day of the month the contact was attempted
+region              region running the pilot
+channel             SMS or CALL
+attempts            number of contact attempts made that month
+reached             whether the customer was actually reached
+cost_usd            cost of that month's contact attempts, in USD
