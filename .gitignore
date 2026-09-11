@@ -1,4 +1,4 @@
-# Raw and generated data — confidential source data, never versioned.
+# Raw and generated data — not versioned here.
 # Applies wherever these files sit (repo root, data/, jupyter_files/, etc).
 *.csv
 *.zip
