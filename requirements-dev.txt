@@ -1,0 +1,4 @@
+# Tooling for working on this repo (not the notebooks' own runtime deps,
+# those run in Colab). Install with: pip install -r requirements-dev.txt
+jupytext==1.19.5
+nbdime==4.0.4
