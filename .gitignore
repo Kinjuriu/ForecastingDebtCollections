@@ -1,0 +1,25 @@
+# Raw and generated data — confidential source data, never versioned.
+# Applies wherever these files sit (repo root, data/, jupyter_files/, etc).
+*.csv
+*.zip
+*.parquet
+*.xlsx
+
+# Material that isn't ours to publish (client-provided instructions, decks).
+*.pptx
+
+# Draft/scratch notebooks — everything except the versioned copy in notebooks/.
+jupyter_files/
+.ipynb_checkpoints/
+
+# Jupyter / Python housekeeping
+__pycache__/
+*.pyc
+
+# Local scratch: the sandbox this repo was assembled in can't delete files,
+# so stray git lock/tmp files get moved here instead of removed.
+_to_delete/
+
+# OS / editor noise
+.DS_Store
+.vscode/
