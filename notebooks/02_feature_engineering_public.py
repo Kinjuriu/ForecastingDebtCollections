@@ -14,7 +14,7 @@
 # ---
 
 # %% [markdown]
-# # Feature Engineering — PayGo Solar Collections Portfolio (v1)
+# # Feature Engineering — PayGo Solar Collections Portfolio (v2 — with independent sanity checks)
 #
 # **Scope:** create leakage-safe analytical feature tables from the cleaned development data through **30-Jun-2026**.
 #
@@ -60,6 +60,19 @@
 # `target_payment_usd`.
 #
 # Calls and service tickets from the same month are not used as predictors because their exact ordering relative to payment is unknown.
+#
+# ## v2 sanity-check philosophy
+#
+# Feature engineering is now treated as a reconciliation problem as well as a transformation problem.
+#
+# The notebook produces:
+# - a compact `feature_metrics.json` for cross-notebook comparison;
+# - `sanity_check_report.csv` with PASS / WARN / FAIL checks;
+# - `payment_reconciliation_by_month.csv` that traces source payment dollars into the feature panel;
+# - `unassigned_usable_payments.csv` for any dollars that should have been model-assignable but did not enter the panel.
+#
+# The notebook also avoids Colab's large interactive DataFrame renderer. Small summaries are printed as text, and large outputs are written to files.
+#
 
 # %% [markdown]
 # ## 1. Upload the cleaned development ZIP
@@ -85,6 +98,9 @@ for name in uploaded:
 import io
 import re
 import zipfile
+import json
+import math
+import hashlib
 from pathlib import Path
 
 import numpy as np
@@ -99,6 +115,27 @@ VALIDATION_END = pd.Timestamp("2026-06-30")
 
 OUTPUT_DIR = Path("/content/dlight_feature_engineering_outputs")
 OUTPUT_DIR.mkdir(exist_ok=True)
+
+# Avoid stale Colab interactive-table references.
+try:
+    from google.colab import data_table
+    data_table.disable_dataframe_formatter()
+except Exception:
+    pass
+
+def show_table(df, max_rows=30, title=None):
+    """Print a stable text snapshot instead of an interactive Colab table."""
+    if title:
+        print(f"\n{title}")
+        print("-" * len(title))
+    if df is None:
+        print("None")
+        return
+    view = df.head(max_rows)
+    print(view.to_string(index=False))
+    if len(df) > max_rows:
+        print(f"... {len(df) - max_rows:,} additional rows not printed")
+
 
 
 # %% [markdown]
@@ -579,6 +616,217 @@ panel["target_paid_any"] = np.where(
     panel["target_payment_usd"] > 0,
     np.nan
 )
+
+# %% [markdown]
+# ## 8a. Payment-dollar reconciliation
+#
+# This is the most important new sanity check.
+#
+# The cleaned monthly payment table is the accounting source. The contract-month panel is an analytical representation. Those two dollar totals should never silently diverge.
+#
+# For each month this section reports:
+#
+# - `source_payment_total_usd`: all cleaned payment dollars in the modelling window after exact de-duplication;
+# - `conflicting_payment_rows_usd`: dollars sitting in unresolved duplicate contract-month records;
+# - `before_sale_payment_usd`: non-conflicting dollars dated before the contract's sale month;
+# - `model_usable_payment_usd`: dollars left after the explicit feature-engineering exclusions;
+# - `panel_target_payment_usd`: dollars actually attached to contract-month rows;
+# - `unassigned_usable_payment_usd`: usable dollars that still failed to enter the panel.
+#
+# The last quantity should be approximately zero. If it is not, the notebook classifies the unmatched rows so we know whether the issue comes from CASH contracts outside their sale month, a panel-construction error, or something else.
+#
+# This section also explains why a country-month total from the feature panel can legitimately differ from the raw cleaned payment total. The difference must be **named and quantified**, not hidden.
+
+# %%
+# Scope to the analytical period only.
+payment_scope = payments[
+    payments["pay_month"].between(
+        ANALYSIS_START,
+        VALIDATION_END
+    )
+].copy()
+
+# Defensive flags after CSV round-trip.
+for _col in [
+    "conflicting_contract_month",
+    "before_sale_month",
+    "orphan_contractid",
+    "negative_payment"
+]:
+    if _col in payment_scope.columns:
+        payment_scope[_col] = as_bool(payment_scope[_col])
+
+# Source accounting total after cleaning-v3 exact deduplication.
+source_by_month = (
+    payment_scope.groupby("pay_month", as_index=False)["total_paid"]
+    .sum()
+    .rename(columns={
+        "pay_month": "month",
+        "total_paid": "source_payment_total_usd"
+    })
+)
+
+conflict_by_month = (
+    payment_scope.loc[
+        payment_scope["conflicting_contract_month"]
+    ]
+    .groupby("pay_month", as_index=False)["total_paid"]
+    .sum()
+    .rename(columns={
+        "pay_month": "month",
+        "total_paid": "conflicting_payment_rows_usd"
+    })
+)
+
+before_sale_by_month = (
+    payment_scope.loc[
+        (~payment_scope["conflicting_contract_month"])
+        & payment_scope["before_sale_month"]
+    ]
+    .groupby("pay_month", as_index=False)["total_paid"]
+    .sum()
+    .rename(columns={
+        "pay_month": "month",
+        "total_paid": "before_sale_payment_usd"
+    })
+)
+
+usable_by_month = (
+    payments_usable.groupby("pay_month", as_index=False)["total_paid"]
+    .sum()
+    .rename(columns={
+        "pay_month": "month",
+        "total_paid": "model_usable_payment_usd"
+    })
+)
+
+panel_target_by_month = (
+    panel.groupby("month", as_index=False)["target_payment_usd"]
+    .sum(min_count=1)
+    .rename(columns={
+        "target_payment_usd": "panel_target_payment_usd"
+    })
+)
+
+payment_reconciliation_by_month = (
+    source_by_month
+    .merge(conflict_by_month, on="month", how="left")
+    .merge(before_sale_by_month, on="month", how="left")
+    .merge(usable_by_month, on="month", how="left")
+    .merge(panel_target_by_month, on="month", how="left")
+    .sort_values("month")
+)
+
+for _col in [
+    "conflicting_payment_rows_usd",
+    "before_sale_payment_usd",
+    "model_usable_payment_usd",
+    "panel_target_payment_usd"
+]:
+    payment_reconciliation_by_month[_col] = (
+        payment_reconciliation_by_month[_col]
+        .fillna(0.0)
+    )
+
+payment_reconciliation_by_month[
+    "excluded_or_unresolved_from_source_usd"
+] = (
+    payment_reconciliation_by_month["source_payment_total_usd"]
+    - payment_reconciliation_by_month["model_usable_payment_usd"]
+)
+
+payment_reconciliation_by_month[
+    "unassigned_usable_payment_usd"
+] = (
+    payment_reconciliation_by_month["model_usable_payment_usd"]
+    - payment_reconciliation_by_month["panel_target_payment_usd"]
+)
+
+payment_reconciliation_by_month[
+    "panel_share_of_source"
+] = np.where(
+    payment_reconciliation_by_month["source_payment_total_usd"].abs() > 0,
+    payment_reconciliation_by_month["panel_target_payment_usd"]
+    / payment_reconciliation_by_month["source_payment_total_usd"],
+    np.nan
+)
+
+# Identify model-usable payments that do not have a corresponding panel key.
+_panel_keys = panel[
+    ["contractid", "month"]
+].drop_duplicates()
+
+_unassigned = (
+    payments_usable.rename(columns={"pay_month": "month"})
+    .merge(
+        _panel_keys.assign(_in_panel=True),
+        on=["contractid", "month"],
+        how="left"
+    )
+)
+
+unassigned_usable_payments = _unassigned[
+    _unassigned["_in_panel"].isna()
+].drop(columns="_in_panel").copy()
+
+if len(unassigned_usable_payments):
+    _contract_lookup = contracts[
+        ["contractid", "contract_type", "sales_month"]
+    ].drop_duplicates("contractid")
+
+    unassigned_usable_payments = (
+        unassigned_usable_payments
+        .merge(
+            _contract_lookup,
+            on="contractid",
+            how="left"
+        )
+    )
+
+    unassigned_usable_payments["unassigned_reason"] = np.select(
+        [
+            (
+                unassigned_usable_payments["contract_type"].eq("CASH")
+                & (
+                    unassigned_usable_payments["month"]
+                    != unassigned_usable_payments["sales_month"]
+                )
+            ),
+            unassigned_usable_payments["contract_type"].eq("CASH"),
+            unassigned_usable_payments["contract_type"].eq("FINANCED"),
+            unassigned_usable_payments["contract_type"].isna(),
+        ],
+        [
+            "CASH_PAYMENT_OUTSIDE_SALE_MONTH",
+            "CASH_PANEL_KEY_MISSING",
+            "FINANCED_PANEL_KEY_MISSING",
+            "CONTRACT_LOOKUP_MISSING",
+        ],
+        default="OTHER"
+    )
+else:
+    unassigned_usable_payments["unassigned_reason"] = pd.Series(dtype="string")
+
+show_table(
+    payment_reconciliation_by_month,
+    max_rows=30,
+    title="Payment reconciliation by month"
+)
+
+if len(unassigned_usable_payments):
+    print("\nUnassigned usable payments by reason")
+    _unassigned_reason_summary = (
+        unassigned_usable_payments
+        .groupby("unassigned_reason", as_index=False)
+        .agg(
+            rows=("contractid", "size"),
+            total_paid_usd=("total_paid", "sum")
+        )
+        .sort_values("total_paid_usd", ascending=False)
+    )
+    show_table(_unassigned_reason_summary, max_rows=30)
+else:
+    print("\nPASS: every model-usable payment dollar maps to a contract-month panel row.")
 
 # %% [markdown]
 # ## 9. Payment-history features — prior months only
@@ -1280,7 +1528,7 @@ region_month["time_layer"] = np.where(
     "validation"
 )
 
-display(region_month.tail(16))
+show_table(region_month.tail(16), max_rows=16, title="Region-month tail")
 
 # %% [markdown]
 # ## 15. Country-month summary
@@ -1336,7 +1584,7 @@ country_month["time_layer"] = np.where(
     "validation"
 )
 
-display(country_month)
+show_table(country_month, max_rows=50, title="Country-month summary")
 
 # %% [markdown]
 # ## 16. Separate pilot-analysis feature table
@@ -1540,7 +1788,7 @@ pilot.loc[
 ] = np.nan
 
 print("Pilot-analysis rows:", len(pilot))
-display(
+show_table(
     pilot[
         [
             "contact_month",
@@ -1553,7 +1801,9 @@ display(
             "payment_next_month_usd",
             "next_month_outcome_observed"
         ]
-    ].head()
+    ].head(10),
+    max_rows=10,
+    title="Pilot feature sample"
 )
 
 # %% [markdown]
@@ -1632,6 +1882,28 @@ quality_checks.append([
     )
 ])
 
+quality_checks.append([
+    "model_usable_minus_panel_payment_usd",
+    float(
+        payment_reconciliation_by_month[
+            "unassigned_usable_payment_usd"
+        ].sum()
+    )
+])
+
+quality_checks.append([
+    "source_minus_model_usable_payment_usd",
+    float(
+        payment_reconciliation_by_month[
+            "source_payment_total_usd"
+        ].sum()
+        -
+        payment_reconciliation_by_month[
+            "model_usable_payment_usd"
+        ].sum()
+    )
+])
+
 feature_quality_checks = pd.DataFrame(
     quality_checks,
     columns=[
@@ -1640,7 +1912,7 @@ feature_quality_checks = pd.DataFrame(
     ]
 )
 
-display(feature_quality_checks)
+show_table(feature_quality_checks, max_rows=50, title="Feature quality checks")
 
 assert feature_quality_checks.loc[
     feature_quality_checks["check"].eq(
@@ -1655,6 +1927,518 @@ assert feature_quality_checks.loc[
     ),
     "value"
 ].iloc[0] == 0
+
+# %% [markdown]
+# ## 17a. Independent sanity checks and cross-notebook metrics
+#
+# The checks below are intentionally redundant. They recompute expected values from source-level monthly aggregates rather than trusting the feature columns simply because the code ran.
+#
+# ### Checks
+#
+# - contract-month key uniqueness;
+# - no rows after Jun-2026;
+# - region totals reconcile exactly to country totals;
+# - every model-usable payment dollar is accounted for;
+# - `payment_lag_1m` agrees with a separately shifted payment lookup;
+# - prior-1-month inbound-call counts agree with independently shifted call aggregates;
+# - prior-1-month ticket counts agree with independently shifted ticket aggregates;
+# - no same-month call/ticket columns remain in the base table;
+# - no collections-outreach treatment columns entered the base table.
+#
+# A `WARN` is not automatically a bug. For example, source dollars excluded because they are dated before the contract sale month are a business-data issue that must be documented.
+#
+# The compact JSON generated here is the preferred way to compare two notebooks.
+
+# %%
+# ---------------------------
+# Sanity report helper
+# ---------------------------
+_sanity_rows = []
+
+def add_check(name, status, actual, expected, layer, note=""):
+    _sanity_rows.append({
+        "check": name,
+        "status": status,
+        "actual": actual,
+        "expected": expected,
+        "layer": layer,
+        "note": note
+    })
+
+# 1) Panel key / date checks.
+_duplicate_panel_keys = int(
+    panel.duplicated(["contractid", "month"]).sum()
+)
+add_check(
+    "contract_month_key_unique",
+    "PASS" if _duplicate_panel_keys == 0 else "FAIL",
+    _duplicate_panel_keys,
+    0,
+    "engineered",
+    "There must be one row per contract-month."
+)
+
+_future_rows = int(
+    (panel["month"] > VALIDATION_END).sum()
+)
+add_check(
+    "no_rows_after_jun_2026",
+    "PASS" if _future_rows == 0 else "FAIL",
+    _future_rows,
+    0,
+    "engineered",
+    "Jul-Sep must remain sealed."
+)
+
+# 2) Region -> country aggregation reconciliation.
+_region_rollup = (
+    region_month.groupby("month", as_index=False)["total_collections_usd"]
+    .sum()
+    .rename(columns={"total_collections_usd": "region_rollup_usd"})
+)
+_country_recon = country_month[
+    ["month", "total_collections_usd"]
+].merge(
+    _region_rollup,
+    on="month",
+    how="outer"
+)
+_country_recon["abs_diff"] = (
+    _country_recon["total_collections_usd"]
+    - _country_recon["region_rollup_usd"]
+).abs()
+
+_region_country_max_diff = float(
+    _country_recon["abs_diff"].fillna(np.inf).max()
+)
+add_check(
+    "region_sums_equal_country_total",
+    "PASS" if _region_country_max_diff < 0.01 else "FAIL",
+    round(_region_country_max_diff, 6),
+    "< 0.01 USD",
+    "engineered",
+    "Regional aggregation should exactly reproduce country totals."
+)
+
+# 3) Model-usable dollars -> panel target.
+_unassigned_total = float(
+    payment_reconciliation_by_month[
+        "unassigned_usable_payment_usd"
+    ].sum()
+)
+add_check(
+    "model_usable_payment_dollars_reconcile_to_panel",
+    "PASS" if abs(_unassigned_total) < 0.01 else "FAIL",
+    round(_unassigned_total, 2),
+    "0.00 USD",
+    "engineered",
+    "Any non-zero amount is traced in unassigned_usable_payments.csv."
+)
+
+# 4) Source -> usable gap is expected to be explainable, not necessarily zero.
+_source_total = float(
+    payment_reconciliation_by_month[
+        "source_payment_total_usd"
+    ].sum()
+)
+_usable_total = float(
+    payment_reconciliation_by_month[
+        "model_usable_payment_usd"
+    ].sum()
+)
+_source_gap = _source_total - _usable_total
+
+add_check(
+    "source_vs_model_usable_payment_gap",
+    "WARN" if abs(_source_gap) >= 0.01 else "PASS",
+    round(_source_gap, 2),
+    "Explainable, not necessarily zero",
+    "input",
+    "Gap should be explained by conflicts, before-sale rows, or other explicit exclusions."
+)
+
+# ---------------------------
+# Independent payment lag-1 check
+# ---------------------------
+_prev_pay_lookup = payments_usable[
+    ["contractid", "pay_month", "total_paid"]
+].copy()
+_prev_pay_lookup["month"] = (
+    _prev_pay_lookup["pay_month"]
+    + pd.offsets.MonthEnd(1)
+)
+_prev_pay_lookup = _prev_pay_lookup[
+    ["contractid", "month", "total_paid"]
+].rename(columns={
+    "total_paid": "_expected_payment_lag_1m"
+})
+
+_prev_conflict_lookup = payment_conflicts.copy()
+_prev_conflict_lookup["month"] = (
+    _prev_conflict_lookup["pay_month"]
+    + pd.offsets.MonthEnd(1)
+)
+_prev_conflict_lookup = _prev_conflict_lookup[
+    ["contractid", "month"]
+].assign(_prev_month_conflict=True)
+
+_lag_check = panel[
+    ["contractid", "month", "months_on_book", "payment_lag_1m"]
+].merge(
+    _prev_pay_lookup,
+    on=["contractid", "month"],
+    how="left"
+).merge(
+    _prev_conflict_lookup,
+    on=["contractid", "month"],
+    how="left"
+)
+
+_lag_check["_prev_month_conflict"] = (
+    _lag_check["_prev_month_conflict"]
+    .fillna(False)
+)
+
+# Only rows that actually have a prior contract-month in the panel.
+_lag_check = _lag_check[
+    _lag_check["months_on_book"] > 0
+].copy()
+
+# If previous month had no payment record, expected observed payment is zero.
+_lag_check["_expected_payment_lag_1m"] = (
+    _lag_check["_expected_payment_lag_1m"]
+    .fillna(0.0)
+)
+
+# If previous month was unresolved conflict, v1/v2 intentionally has NaN lag.
+_lag_expected_nan = _lag_check["_prev_month_conflict"]
+
+_lag_numeric_mismatch = (
+    (~_lag_expected_nan)
+    & (
+        (
+            _lag_check["payment_lag_1m"]
+            - _lag_check["_expected_payment_lag_1m"]
+        ).abs() > 1e-9
+    )
+)
+
+_lag_nan_mismatch = (
+    _lag_expected_nan
+    & _lag_check["payment_lag_1m"].notna()
+)
+
+_payment_lag1_mismatches = int(
+    (_lag_numeric_mismatch | _lag_nan_mismatch).sum()
+)
+
+add_check(
+    "payment_lag_1m_matches_shifted_source",
+    "PASS" if _payment_lag1_mismatches == 0 else "FAIL",
+    _payment_lag1_mismatches,
+    0,
+    "engineered",
+    "Independent check against prior-month cleaned payment source."
+)
+
+# ---------------------------
+# Independent calls lag-1 check
+# ---------------------------
+_expected_calls_prev = call_month_total.copy()
+_expected_calls_prev["month"] = (
+    _expected_calls_prev["month"]
+    + pd.offsets.MonthEnd(1)
+)
+_expected_calls_prev = _expected_calls_prev.rename(
+    columns={"calls_this_month": "_expected_calls_prior_1m"}
+)
+
+_calls_check = panel[
+    ["contractid", "month", "calls_prior_1m"]
+].merge(
+    _expected_calls_prev[
+        ["contractid", "month", "_expected_calls_prior_1m"]
+    ],
+    on=["contractid", "month"],
+    how="left"
+)
+
+_calls_check["_expected_calls_prior_1m"] = (
+    _calls_check["_expected_calls_prior_1m"]
+    .fillna(0)
+)
+
+_call_lag1_mismatches = int(
+    (
+        _calls_check["calls_prior_1m"]
+        - _calls_check["_expected_calls_prior_1m"]
+    ).abs().gt(1e-9).sum()
+)
+
+add_check(
+    "calls_prior_1m_matches_shifted_source",
+    "PASS" if _call_lag1_mismatches == 0 else "FAIL",
+    _call_lag1_mismatches,
+    0,
+    "engineered",
+    "Independent check against source call counts shifted one month."
+)
+
+# ---------------------------
+# Independent ticket lag-1 check
+# ---------------------------
+_expected_tickets_prev = ticket_month_total.copy()
+_expected_tickets_prev["month"] = (
+    _expected_tickets_prev["month"]
+    + pd.offsets.MonthEnd(1)
+)
+_expected_tickets_prev = _expected_tickets_prev.rename(
+    columns={"tickets_this_month": "_expected_tickets_prior_1m"}
+)
+
+_tickets_check = panel[
+    ["contractid", "month", "tickets_prior_1m"]
+].merge(
+    _expected_tickets_prev[
+        ["contractid", "month", "_expected_tickets_prior_1m"]
+    ],
+    on=["contractid", "month"],
+    how="left"
+)
+
+_tickets_check["_expected_tickets_prior_1m"] = (
+    _tickets_check["_expected_tickets_prior_1m"]
+    .fillna(0)
+)
+
+_ticket_lag1_mismatches = int(
+    (
+        _tickets_check["tickets_prior_1m"]
+        - _tickets_check["_expected_tickets_prior_1m"]
+    ).abs().gt(1e-9).sum()
+)
+
+add_check(
+    "tickets_prior_1m_matches_shifted_source",
+    "PASS" if _ticket_lag1_mismatches == 0 else "FAIL",
+    _ticket_lag1_mismatches,
+    0,
+    "engineered",
+    "Independent check against source ticket counts shifted one month."
+)
+
+# 5) Leakage-column checks.
+_same_month_event_cols = [
+    c for c in panel.columns
+    if c.endswith("_this_month")
+    and (
+        c.startswith("calls")
+        or c.startswith("tickets")
+    )
+]
+add_check(
+    "no_same_month_call_or_ticket_predictors",
+    "PASS" if len(_same_month_event_cols) == 0 else "FAIL",
+    len(_same_month_event_cols),
+    0,
+    "engineered",
+    ", ".join(_same_month_event_cols[:10])
+)
+
+_outreach_terms = {
+    "channel", "attempts", "reached", "cost_usd",
+    "contact_month"
+}
+_outreach_cols_in_panel = [
+    c for c in panel.columns
+    if c in _outreach_terms
+    or c.startswith("outreach_")
+]
+add_check(
+    "no_outreach_treatment_columns_in_base_panel",
+    "PASS" if len(_outreach_cols_in_panel) == 0 else "FAIL",
+    len(_outreach_cols_in_panel),
+    0,
+    "engineered",
+    ", ".join(_outreach_cols_in_panel[:10])
+)
+
+sanity_check_report = pd.DataFrame(_sanity_rows)
+
+show_table(
+    sanity_check_report,
+    max_rows=100,
+    title="Sanity check report"
+)
+
+# ---------------------------
+# Compact cross-notebook metrics
+# ---------------------------
+def _round_float(x, ndigits=6):
+    if pd.isna(x):
+        return None
+    return round(float(x), ndigits)
+
+def _month_dict(df, month_col, value_col, ndigits=2):
+    out = {}
+    for _, row in df[[month_col, value_col]].iterrows():
+        key = pd.Timestamp(row[month_col]).strftime("%Y-%m-%d")
+        value = row[value_col]
+        out[key] = None if pd.isna(value) else round(float(value), ndigits)
+    return out
+
+def _feature_sum(column_name):
+    if column_name not in panel.columns:
+        return None
+    return _round_float(
+        pd.to_numeric(panel[column_name], errors="coerce").sum()
+    )
+
+feature_metrics = {
+    "input_layer": {
+        "contracts_rows": int(len(contracts)),
+        "contracts_unique_ids": int(contracts["contractid"].nunique()),
+        "payments_rows": int(len(payments)),
+        "payments_total_usd_oct_to_jun": _round_float(_source_total, 2),
+        "payments_model_usable_usd_oct_to_jun": _round_float(_usable_total, 2),
+        "payment_conflict_contract_months": int(len(payment_conflicts)),
+        "calls_rows": int(len(calls)),
+        "service_ticket_rows": int(len(service)),
+        "outreach_rows": int(len(outreach)),
+        "source_payment_by_month_usd": _month_dict(
+            payment_reconciliation_by_month,
+            "month",
+            "source_payment_total_usd",
+            2
+        ),
+        "model_usable_payment_by_month_usd": _month_dict(
+            payment_reconciliation_by_month,
+            "month",
+            "model_usable_payment_usd",
+            2
+        ),
+    },
+    "engineered_layer": {
+        "panel_rows": int(len(panel)),
+        "panel_unique_contracts": int(panel["contractid"].nunique()),
+        "panel_unique_contract_months": int(
+            panel[["contractid", "month"]].drop_duplicates().shape[0]
+        ),
+        "panel_column_count": int(panel.shape[1]),
+        "panel_columns_sha256": hashlib.sha256(
+            "\n".join(sorted(panel.columns)).encode("utf-8")
+        ).hexdigest(),
+        "forecast_feature_eligible_rows": int(
+            panel["forecast_feature_row_eligible"].sum()
+        ),
+        "current_payment_conflict_rows": int(
+            panel["current_payment_conflict"].sum()
+        ),
+        "prior_payment_conflict_rows": int(
+            (panel["prior_payment_conflict_count"] > 0).sum()
+        ),
+        "panel_target_total_usd": _round_float(
+            panel["target_payment_usd"].sum(),
+            2
+        ),
+        "panel_target_by_month_usd": _month_dict(
+            country_month,
+            "month",
+            "total_collections_usd",
+            2
+        ),
+        "payment_lag_1m_sum": _feature_sum("payment_lag_1m"),
+        "payment_trailing_3m_sum_total": _feature_sum("payment_trailing_3m_sum"),
+        "payment_trailing_6m_sum_total": _feature_sum("payment_trailing_6m_sum"),
+        "cumulative_paid_before_month_sum": _feature_sum("cumulative_paid_before_month"),
+        "remaining_balance_before_month_sum": _feature_sum("remaining_contract_balance_before_month"),
+        "calls_prior_1m_sum": _feature_sum("calls_prior_1m"),
+        "calls_prior_3m_sum": _feature_sum("calls_prior_3m"),
+        "tickets_prior_1m_sum": _feature_sum("tickets_prior_1m"),
+        "tickets_prior_3m_sum": _feature_sum("tickets_prior_3m"),
+        "region_month_rows": int(len(region_month)),
+        "country_month_rows": int(len(country_month)),
+        "pilot_rows": int(len(pilot)),
+    },
+    "reconciliation": {
+        "source_minus_model_usable_usd": _round_float(_source_gap, 2),
+        "model_usable_minus_panel_usd": _round_float(_unassigned_total, 2),
+        "region_country_max_abs_diff_usd": _round_float(_region_country_max_diff, 6),
+    },
+    "sanity": {
+        row["check"]: row["status"]
+        for row in _sanity_rows
+    }
+}
+
+# ---------------------------
+# Cross-notebook comparison helper
+# ---------------------------
+def flatten_metrics(obj, prefix=""):
+    flat = {}
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            next_prefix = f"{prefix}.{key}" if prefix else str(key)
+            flat.update(flatten_metrics(value, next_prefix))
+    else:
+        flat[prefix] = obj
+    return flat
+
+def compare_metrics(mine, theirs, atol=1e-6, rtol=1e-9):
+    a = flatten_metrics(mine)
+    b = flatten_metrics(theirs)
+
+    rows = []
+    for key in sorted(set(a) | set(b)):
+        left = a.get(key, "__MISSING__")
+        right = b.get(key, "__MISSING__")
+
+        if left == "__MISSING__" or right == "__MISSING__":
+            same = False
+            delta = None
+        elif (
+            isinstance(left, (int, float))
+            and not isinstance(left, bool)
+            and isinstance(right, (int, float))
+            and not isinstance(right, bool)
+        ):
+            same = math.isclose(
+                float(left),
+                float(right),
+                abs_tol=atol,
+                rel_tol=rtol
+            )
+            delta = float(left) - float(right)
+        else:
+            same = left == right
+            delta = None
+
+        if key.startswith("input_layer."):
+            layer = "INPUT"
+        elif key.startswith("engineered_layer."):
+            layer = "ENGINEERED"
+        elif key.startswith("reconciliation."):
+            layer = "RECONCILIATION"
+        else:
+            layer = "SANITY"
+
+        rows.append({
+            "metric": key,
+            "layer": layer,
+            "mine": left,
+            "theirs": right,
+            "delta_mine_minus_theirs": delta,
+            "result": "MATCH" if same else "DIFF"
+        })
+
+    return pd.DataFrame(rows)
+
+# Demonstration:
+# mine = json.load(open(OUTPUT_DIR / "feature_metrics.json"))
+# theirs = json.load(open("/content/feature_metrics_OTHER.json"))
+# comparison = compare_metrics(mine, theirs)
+# show_table(comparison[comparison["result"] == "DIFF"], max_rows=200)
+
 
 # %% [markdown]
 # ## 18. Feature dictionary
@@ -1767,7 +2551,7 @@ feature_dictionary = pd.DataFrame(
     ]
 )
 
-display(feature_dictionary)
+show_table(feature_dictionary, max_rows=50, title="Feature dictionary")
 
 # %% [markdown]
 # ## 19. Save feature-engineering outputs
@@ -1813,12 +2597,45 @@ feature_quality_checks.to_csv(
 
 print("Saved feature outputs to:", OUTPUT_DIR)
 
+payment_reconciliation_by_month.to_csv(
+    OUTPUT_DIR / "payment_reconciliation_by_month.csv",
+    index=False
+)
+
+unassigned_usable_payments.to_csv(
+    OUTPUT_DIR / "unassigned_usable_payments.csv",
+    index=False
+)
+
+sanity_check_report.to_csv(
+    OUTPUT_DIR / "sanity_check_report.csv",
+    index=False
+)
+
+with open(
+    OUTPUT_DIR / "feature_metrics.json",
+    "w"
+) as f:
+    json.dump(
+        feature_metrics,
+        f,
+        indent=2,
+        sort_keys=True
+    )
+
+print("Also saved:")
+print(" - payment_reconciliation_by_month.csv")
+print(" - unassigned_usable_payments.csv")
+print(" - sanity_check_report.csv")
+print(" - feature_metrics.json")
+
+
 # %% [markdown]
 # ## 20. Package and download
 
 # %%
 zip_path = Path(
-    "/content/dlight_feature_engineering_outputs_v1.zip"
+    "/content/dlight_feature_engineering_outputs_v2.zip"
 )
 
 with zipfile.ZipFile(
@@ -1852,3 +2669,16 @@ files.download(str(zip_path))
 # - how to estimate pilot effectiveness separately without contaminating the base forecast.
 #
 # Do not open the sealed Jul–Sep cleaning ZIP for any of those choices.
+#
+# ## Comparing against a second notebook
+#
+# The first comparison artifacts to exchange are:
+#
+# 1. `feature_metrics.json`
+# 2. `sanity_check_report.csv`
+# 3. `payment_reconciliation_by_month.csv`
+# 4. `feature_quality_checks.csv`
+# 5. `country_month_features.csv`
+#
+# Do **not** exchange the full 700k-row contract-month file unless these compact checks reveal a discrepancy that needs row-level investigation.
+#
