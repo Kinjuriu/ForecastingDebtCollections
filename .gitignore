@@ -8,13 +8,12 @@
 # Material that isn't ours to publish (client-provided instructions, decks).
 *.pptx
 
-# Draft/scratch notebooks and private-only work — everything except the
-# versioned copy in notebooks/. Add any new local working folder here too.
+# Draft/scratch notebooks — everything except the versioned copy in
+# notebooks/. Add any new local working folder here too.
 jupyter_files/
 data_cleaning/
 feature_engineering/
 TEST DATA/
-models/
 .ipynb_checkpoints/
 
 # Jupyter / Python housekeeping
