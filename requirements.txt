@@ -1,0 +1,8 @@
+# Runtime dependencies for the notebooks in notebooks/. Install with:
+#   pip install -r requirements.txt
+pandas>=2.0
+numpy>=1.26
+matplotlib>=3.8
+scikit-learn>=1.3
+statsmodels>=0.14
+jupyter>=1.0
