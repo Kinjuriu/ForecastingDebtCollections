@@ -14,6 +14,7 @@ jupyter_files/
 data_cleaning/
 feature_engineering/
 TEST DATA/
+models/
 .ipynb_checkpoints/
 
 # Jupyter / Python housekeeping
