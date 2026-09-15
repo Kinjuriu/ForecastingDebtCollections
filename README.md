@@ -23,7 +23,7 @@ The first task is to forecast total country collections for the next three month
 
 The second task evaluates two customer-outreach programmes: preventative SMS reminders and outbound calls to customers in arrears. The analysis estimates whether each programme increased repayment, considers the cost of each contact method and recommends how to use a fixed monthly outreach budget.
 
-The public repository focuses on the analytical process. It does not contain proprietary data, private customer information, final forecast figures or confidential business recommendations.
+The public repository focuses on the analytical process. It does not contain proprietary data, private customer information, or confidential business recommendations.
 
 ## Business Questions
 
@@ -107,7 +107,7 @@ The preparation process includes:
 * Reconciling customer-level collections with the total cash reported at country level.
 * Creating lagged variables using information available before the forecast month.
 
-Raw files remain unchanged. Corrections and exclusions are recorded separately.
+Raw files remain unchanged.
 
 ## Feature Engineering
 
@@ -321,8 +321,6 @@ jupyter lab
 2. Upload an authorised local dataset when prompted.
 3. Run the notebook from top to bottom.
 4. Review the validation and quality checks.
-5. Download generated outputs locally.
-6. Do not commit private data or generated private results.
 
 ### Local Jupyter environment
 
@@ -375,10 +373,6 @@ This repository does not include:
 * Raw or processed customer data.
 * Customer or contract identifiers.
 * Confidential company information.
-* Final private forecast outputs.
-* Final pilot-effect estimates.
-* Conversations with AI assistants.
-* Prompts or full AI transcripts.
 
 Notebook outputs should be cleared before public commits. Any example data added later should be synthetic and should not reproduce real customer records.
 
@@ -392,7 +386,6 @@ All analytical decisions, code changes and final interpretations were reviewed b
 
 ## Limitations
 
-* The original operational data cannot be shared publicly.
 * The notebooks require the private source data to reproduce real forecast and pilot figures.
 * Forecasts depend on future sales and repayment behaviour remaining reasonably close to the stated assumptions.
 * Historical backtests cannot remove uncertainty about future sales-plan delivery.
