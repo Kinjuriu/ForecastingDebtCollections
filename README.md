@@ -1,7 +1,7 @@
 # Debt Collections Forecasting and Outreach Evaluation
 
 <p align="center">
-  A portfolio project for forecasting cash collections, evaluating customer outreach programmes and supporting budget decisions.
+  A decision analytics project combining cash forecasting, outreach evaluation and budget allocation.
 </p>
 
 <p align="center">
@@ -10,276 +10,410 @@
 ![Jupyter](https://img.shields.io/badge/Jupyter-Colab-orange?logo=jupyter)
 ![Pandas](https://img.shields.io/badge/Pandas-Data_Analysis-150458?logo=pandas)
 ![scikit-learn](https://img.shields.io/badge/scikit--learn-Machine_Learning-F7931E?logo=scikitlearn)
-![Tests](https://img.shields.io/badge/Tests-unittest-success)
-![Status](https://img.shields.io/badge/Status-Portfolio_Project-6f42c1)
+![Tests](https://img.shields.io/badge/Tests-66_Passing-success)
+![License](https://img.shields.io/badge/License-MIT-green)
+![Status](https://img.shields.io/badge/Status-Complete-6f42c1)
 
 </p>
 
+---
+
 ## Overview
 
-This project examines two related collections questions for a consumer-finance portfolio.
+This project addresses two business questions for a consumer-finance portfolio:
 
-The first task is to forecast total country collections for the next three months. The forecast provides a base case, downside and upside scenarios. It also explains which business assumption has the greatest effect on the result.
+1. How much cash could be collected over the next three months?
+2. Which of two regional customer-outreach programmes should receive further investment?
 
-The second task evaluates two customer-outreach programmes: preventative SMS reminders and outbound calls to customers in arrears. The analysis estimates whether each programme increased repayment, considers the cost of each contact method and recommends how to use a fixed monthly outreach budget.
+The first analysis builds a country-level collections forecast from the existing customer portfolio and planned new sales. The second evaluates a preventative SMS programme and an outbound call programme using observational causal methods.
 
-The public repository focuses on the analytical process. It does not contain proprietary data, private customer information, or confidential business recommendations.
+The raw customer data is private and is not included in this repository. The notebooks, tests, methodology and version history are included.
 
-## Business Questions
+---
 
-### Collections forecast
+## Key Results
 
-* How much cash is likely to be collected over the next three months?
-* What would a reasonable downside and upside look like?
-* Which assumption creates the most forecast risk?
-* How does the forecast compare with simpler methods?
+| Business question                                | Finding                                                                                                                                      | Recommended action                                       |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| How much cash could be collected in Q3 2026?     | Base forecast of **$1.42 million**, with a scenario range of **$1.20 million to $1.48 million**                                              | Use the base case for planning and monitor sales monthly |
+| What creates the greatest forecast risk?         | Sales-plan attainment. Remaining at the June sales rate would reduce Q3 collections by approximately **$136,000**                            | Refresh the forecast when monthly sales become available |
+| Should preventative SMS be scaled?               | Scheduled collections increased by approximately **11%** at a cost of about **$0.08 per customer**                                           | Scale cautiously and test the programme in other regions |
+| Should outbound calls be scaled?                 | Calls improved repayment, but produced roughly **$0.50 per contact** against a cost of about **$2.22**                                       | Do not scale the programme in its current form           |
+| Were the product concerns supported by the data? | One product-region segment repaid about **25% below its expected curve** and had **four to five times more battery and charging complaints** | Investigate product quality and after-sales support      |
 
-### Outreach evaluation
+---
 
-* Did the SMS and call programmes increase repayment?
-* Can the observed differences reasonably be linked to the programmes?
-* Did the additional collections cover the outreach costs?
-* Which programme should receive further investment?
-* What test would provide stronger evidence?
+## Collections Forecast
 
-## Project Outputs
+### Q3 2026 forecast
 
-| Output                           | Purpose                                                                |
-| --------------------------------- | ---------------------------------------------------------------------- |
-| Three-month collections forecast | Estimates monthly and quarterly cash collections                       |
-| Scenario analysis                | Shows the effect of weaker or stronger business conditions             |
-| Model comparison                 | Compares the main model with simple and statistical alternatives       |
-| Backtest scorecard               | Measures historical forecast error and bias                            |
-| Pilot evaluation                 | Estimates the repayment change associated with each outreach programme |
-| Cost-effectiveness analysis      | Compares additional cash with the cost of outreach                     |
-| Budget recommendation            | Allocates a fixed budget within observed programme capacity            |
-| Data-quality audit               | Records corrections, exclusions and reconciliation differences         |
+| Month          |       Downside |      Base case |         Upside |
+| -------------- | -------------: | -------------: | -------------: |
+| July 2026      |       $399,143 |   **$463,091** |       $481,978 |
+| August 2026    |       $404,414 |   **$476,019** |       $498,841 |
+| September 2026 |       $400,937 |   **$478,055** |       $504,074 |
+| **Q3 total**   | **$1,204,493** | **$1,417,165** | **$1,484,893** |
 
-Private figures and decision outputs are intentionally excluded from this repository.
+The downside and upside are business scenarios. They are not formal statistical confidence intervals.
 
-## Analytical Workflow
+### Forecast composition
+
+| Source of collections                                     |                Q3 forecast |     Share |
+| --------------------------------------------------------- | -------------------------: | --------: |
+| Existing customers within their scheduled payment period  |                   $721,069 |     50.9% |
+| Recovery of overdue balances after scheduled contract end |                    $87,938 |      6.2% |
+| **All existing customers**                                | **approximately $809,007** | **57.1%** |
+| New financed sales                                        |                   $307,561 |     21.7% |
+| New cash sales                                            |                   $284,086 |     20.0% |
+| **All new sales**                                         | **approximately $591,647** | **41.7%** |
+| Country-level reconciliation adjustment                   |      approximately $16,509 |      1.2% |
+
+Displayed components are rounded, so they may differ from the headline total by a few dollars.
+
+### Main forecast sensitivities
+
+| Assumption                  | Scenario                                          | Change from base |
+| --------------------------- | ------------------------------------------------- | ---------------: |
+| Sales-plan attainment       | Sales remain at approximately 77% of plan         |    **−$136,079** |
+| Regional programmes stop    | East and West return to earlier collection levels |         −$35,298 |
+| Existing-book collections   | Repayment is weaker than recent experience        |         −$26,592 |
+| Post-tenor arrears recovery | Recovery is 25% lower                             |         −$21,457 |
+| Cash share of new sales     | Fewer new customers pay the full price upfront    |          −$9,183 |
+
+Sales-plan attainment is the largest sensitivity because new sales produce immediate cash through cash purchases, deposits and early financed repayments.
+
+---
+
+## Forecasting Method
+
+The main forecast is a bottom-up cohort model. It follows the different ways cash enters the business.
 
 ```mermaid
 flowchart TD
-    A[Operational data] --> B[Cleaning and quality checks]
-    B --> C[Monthly customer panel]
-    C --> D[Collections forecasting]
-    C --> E[Outreach evaluation]
-    D --> F[Base and scenario forecasts]
-    E --> G[Cost and budget analysis]
-    F --> H[Business recommendations]
-    G --> H
+    A["Existing customer portfolio"] --> D["Scheduled collections"]
+    B["Outstanding overdue balances"] --> E["Post-tenor recovery"]
+    C["New-sales plan"] --> F["Cash sales and financed payments"]
+    D --> G["Country collections forecast"]
+    E --> G
+    F --> G
+    H["Reconciliation adjustment"] --> G
 ```
 
-## Data
+Customers are grouped using information such as:
 
-The original analysis used five related operational datasets.
+* Region
+* Product
+* Contract type
+* Payment frequency
+* Contract age
+* Scheduled contract duration
 
-| Dataset         | Information used                                                      |
-| --------------- | --------------------------------------------------------------------- |
-| Contracts       | Contract type, product, sale date, price, deposit and repayment terms |
-| Payments        | Monthly cash received for each contract                               |
-| Outreach        | Contact method, number of attempts, contact outcome and cost          |
-| Calls           | Historical customer-call activity                                     |
-| Service tickets | Product and service issues reported by customers                      |
+Historical repayment patterns are applied to the portfolio that existed at the forecast date. Planned new sales are modelled separately.
 
-The raw data is private and is not included in this repository.
+---
 
-The analysis uses a chronological split:
+## Model Performance
 
-* **Estimation period:** Used to calculate repayment patterns and fit models.
-* **Validation period:** Used to compare forecasts with known later outcomes.
-* **Sealed period:** Kept hidden until the model, assumptions and forecast files were frozen.
+The models were tested using rolling forecast origins. At each origin, the model used only earlier information and predicted a later quarter whose actual collections were already known.
 
-This structure reflects how a real forecast works. Future observations are not randomly mixed into the training data.
+Lower WAPE is better.
 
-## Data Preparation
+| Model                                             | Jun 2025 | Sep 2025 | Dec 2025 | Mar 2026 | Mean WAPE | Mean bias |
+| ------------------------------------------------- | -------: | -------: | -------: | -------: | --------: | --------: |
+| `cohort_A_curve_through_origin`                   |     1.6% |     3.2% |     5.3% |     2.6% |  **3.2%** |     −0.7% |
+| `ridge_challenger_existing_plus_cohort_new_sales` |     1.4% |     3.3% |     6.9% |     1.3% |  **3.2%** |     −0.5% |
+| `cohort_B_curve_cut_3m_before_origin`             |     3.1% |     2.7% |     5.2% |     2.2% |      3.3% |      0.9% |
+| `cohort_B_without_level_factor`                   |     3.8% |     2.5% |     5.4% |     2.4% |      3.5% |      1.9% |
+| `naive_last_3m_average`                           |    12.4% |    11.5% |     8.4% |     5.6% |      9.5% |     −6.0% |
+| `holt_damped`                                     |     6.3% |     9.7% |    12.1% |    15.6% |     10.9% |      2.9% |
 
-The preparation process includes:
+### Model roles
 
-* Standardising dates, categories and numerical fields.
-* Auditing exact duplicates before retaining one copy.
-* Quarantining conflicting contract-month records.
-* Flagging records with contract IDs that do not appear in the contract table.
-* Checking whether events occur before the related contract starts.
-* Correcting likely deposit-scale errors while retaining the original value and an audit flag.
-* Separating scheduled collections from payments received after the scheduled loan term.
-* Reconciling customer-level collections with the total cash reported at country level.
-* Creating lagged variables using information available before the forecast month.
+| Model                             | Role                           | Decision                                  |
+| --------------------------------- | ------------------------------ | ----------------------------------------- |
+| Cohort model                      | Explainable bottom-up forecast | Selected as the main model                |
+| Ridge regression                  | Machine-learning challenger    | Retained as an independent check          |
+| Damped Holt                       | Time-series challenger         | Retained as a comparison                  |
+| Recent three-month average        | Simple benchmark               | Used as the minimum performance threshold |
+| Alternative cohort specifications | Robustness checks              | Used to test curve and level assumptions  |
 
-Raw files remain unchanged.
+The cohort and Ridge models had the same average WAPE. The cohort model remained the headline model because it was stable, easy to explain and directly connected to the customer portfolio.
 
-## Feature Engineering
+### Frozen Q3 forecasts
 
-The main analytical table contains one row per contract and month.
+| Model                                             |     July |   August | September |       Q3 total |
+| ------------------------------------------------- | -------: | -------: | --------: | -------------: |
+| `cohort_A_curve_through_origin`                   | $463,091 | $476,019 |  $478,055 | **$1,417,165** |
+| `ridge_challenger_existing_plus_cohort_new_sales` | $466,781 | $477,183 |  $480,225 |     $1,424,189 |
+| `naive_last_3m_average`                           | $440,584 | $440,584 |  $440,584 |     $1,321,752 |
+| `holt_damped`                                     | $409,787 | $412,955 |  $415,889 |     $1,238,631 |
 
-Important features include:
+July to September payment outcomes were held out by the data provider. The forecasts were frozen without access to those outcomes.
 
-* Months since the contract started.
-* Expected cash due during the month.
-* Previous monthly payments.
-* Recent payment totals and payment gaps.
-* Months since the last payment.
-* Contract type and repayment frequency.
-* Product and region.
-* Previous call attempts.
-* Previous service-ticket activity.
-* Whether the account remains inside its scheduled repayment period.
-
-Same-month calls, service tickets and outreach activity are excluded from forecasting features where their timing relative to payment cannot be established. This prevents information from the outcome month leaking into the prediction.
-
-## Forecasting Approach
-
-The main forecast is a bottom-up cohort model. It estimates collections from the customer portfolio and then adds the expected contribution from planned new sales.
-
-The forecast separates:
-
-1. Collections from existing financed contracts.
-2. Collections from new financed sales.
-3. Collections from new cash sales.
-4. Recovery after the scheduled loan term.
-5. Adjustments required to reconcile the model with reported cash.
-
-Repayment behaviour is estimated by contract age, contract type and region. Where a segment has limited observations, the model uses broader portfolio patterns to reduce unstable estimates.
-
-### Models compared
-
-| Model                   | Role                        |
-| ----------------------- | --------------------------- |
-| Cohort or vintage model | Main explainable forecast   |
-| Ridge regression        | Machine-learning challenger |
-| Damped Holt model       | Time-series comparison      |
-| Recent-month average    | Simple benchmark            |
-
-The final method is selected using historical performance, forecast bias, stability and ease of explanation. The most complex model does not automatically become the main forecast.
-
-## Forecast Validation
-
-The models are evaluated with rolling-origin backtests. Each test trains on earlier months and predicts a later period.
-
-The main evaluation metrics are:
-
-* **MAE:** Average forecast error in currency.
-* **WAPE:** Total absolute error as a percentage of actual collections.
-* **Bias:** Whether the forecast tends to run high or low.
-* **Bias in currency:** The total amount over-forecast or under-forecast.
-
-Performance is reviewed at country and regional level. Regional checks help identify places where a strong national result may hide local forecast problems.
-
-The final three-month forecast is frozen before the sealed outcomes are opened. The sealed period is used as a final evaluation, rather than as another opportunity to adjust the model.
+---
 
 ## Outreach Evaluation
 
-The outreach programmes were not randomised, so a raw comparison between contacted and uncontacted customers would be misleading.
+The regional programmes were not randomly assigned. Two complementary approaches were used.
 
-The analysis uses two complementary methods.
+### Difference-in-Differences
 
-### Difference in differences
+Difference-in-Differences compares the change in repayment in a programme region with the change over the same period in regions without that programme.
 
-This method compares how repayment changed after a programme started relative to regions without the programme. Repayment expectations are adjusted for the age of each contract.
+The analysis adjusts for contract age and checks whether the regions followed similar trends before the programme began.
 
-Pre-programme trends and fake-start placebo tests are checked before relying on the result.
+### Customer Matching
 
-### Customer matching
+Matching compares contacted customers with similar uncontacted customers in the same region and month.
 
-Propensity-score matching compares contacted customers with similar uncontacted customers in the same region and month.
+Logistic regression estimates each customer’s probability of receiving outreach. Nearest-neighbour matching then finds customers with similar probabilities and prior characteristics.
 
-The matching process includes:
+Matching is used only when the treated and comparison groups have enough overlap.
 
-* Logistic regression for the probability of receiving outreach.
-* One-hot encoding for categorical variables.
-* Standardisation of numerical variables.
-* Nearest-neighbour matching.
-* Common-support checks.
-* Balance diagnostics.
-* Sensitivity tests using different numbers of neighbours.
-* Cluster bootstrap intervals at contract level.
+---
 
-Matching results are only used when enough treated and control customers overlap. A statistically precise result is not treated as representative when most customers fall outside the matched sample.
+## Programme Evidence and Actions
 
-### Repayment measure
+| Programme        | Credible method                                               |                                                                                           Estimated effect | Cost and value                                                           | Action                                                                   |
+| ---------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------: | ------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| Preventative SMS | Age-adjusted Difference-in-Differences                        |                                                           Approximately **11% increase in scheduled cash** | About $0.08 per customer and approximately $6.70 gross cash per $1 spent | **Scale cautiously** and test transfer to other regions                  |
+| Outbound calls   | Difference-in-Differences supported by within-region matching | Approximately **7% repayment improvement**; matching indicates about **$0.50 additional cash per contact** | Approximately $2.22 per contact, producing a negative net return         | **Do not scale as currently operated**; test a smaller targeted approach |
 
-Repayment is measured as additional cash collected above the amount expected for a similar contract.
+Matching was not used as the main estimate for the SMS programme because almost the entire region received messages. The small untreated group was not representative enough to support a reliable matched comparison.
 
-Every outreach attempt is counted, including unsuccessful attempts, because every attempt uses time or money.
+The SMS result is more economically attractive. Causal confidence remains moderate because the original programmes were observational.
 
-Same-month cash is considered for preventative reminders. Next-month cash is also considered for arrears calls because customers may take longer to repay after a call.
+---
 
-## Cost and Budget Analysis
+## Recommended Monthly Budget
 
-Programme value is assessed using:
+| Use                                       | Allocation | Expected additional cash |           Expected net value |
+| ----------------------------------------- | ---------: | -----------------------: | ---------------------------: |
+| Continue the established SMS programme    |     $1,152 |                   $7,661 |                       $6,509 |
+| Test SMS in three additional regions      |     $2,808 |                   $9,339 |                       $6,531 |
+| Run a targeted outbound-call experiment   |     $2,000 |                   $1,407 |                        −$593 |
+| Hold for reallocation after early results |     $2,040 |                        — |                            — |
+| **Total budget**                          | **$8,000** |              **$18,407** | **$12,447 on planned spend** |
 
-* Cost per contact attempt.
-* Additional cash per contacted customer.
-* Additional cash collected per dollar spent.
-* Net value after outreach cost.
-* Monthly programme capacity.
-* Strength and generalisability of the evidence.
+The reserve allows the remaining budget to be directed using early test results. Expected value is a planning estimate rather than a guaranteed return.
 
-The budget analysis can leave part of the available budget unallocated. Spending is only recommended where the evidence or expected learning value justifies the cost.
+---
 
-A proposed randomised rollout uses a control group to test whether results from one region transfer to other regions.
+## Data
 
-## Technology
+The analysis uses five linked operational datasets.
 
-| Category              | Tools                                   |
-| --------------------- | ---------------------------------------- |
-| Programming language  | Python                                  |
-| Data analysis         | Pandas, NumPy                           |
-| Machine learning      | scikit-learn                            |
-| Time-series modelling | statsmodels                             |
-| Visualisation         | Matplotlib                              |
-| Notebooks             | Jupyter Notebook, Google Colab, IPython |
-| Testing               | Python `unittest`                       |
-| File handling         | pathlib, zipfile, JSON, hashlib         |
-| Documentation         | Markdown, Mermaid, Shields.io           |
-| Version control       | Git, GitHub                             |
+| Dataset              | Information used                                       |
+| -------------------- | ------------------------------------------------------ |
+| Contracts            | Product, sale date, price, deposit and repayment terms |
+| Payments             | Monthly cash received for each contract                |
+| Collections outreach | Channel, attempts, reach and cost                      |
+| Customer calls       | Historical customer-call activity                      |
+| Service tickets      | Product and service issues                             |
 
-The modelling uses statistical and classical machine-learning methods. No deep-learning framework is required.
+### Time split
+
+| Period        | Purpose                                     |
+| ------------- | ------------------------------------------- |
+| Estimation    | Learn repayment patterns and fit models     |
+| Validation    | Compare forecasts with known later outcomes |
+| Final holdout | Evaluate the frozen forecast                |
+
+The final holdout payment outcomes were not included in the supplied files.
+
+### Data preparation
+
+The cleaning pipeline:
+
+* Standardises identifiers, dates, categories and numeric fields.
+* Preserves original values before applying corrections.
+* Removes extra copies of exact duplicate payments.
+* Quarantines conflicting contract-month records.
+* Flags records occurring before the related contract starts.
+* Audits likely deposit-scale errors.
+* Separates scheduled repayments from overdue balances collected after tenor.
+* Reconciles contract-level cash with country totals.
+* Prevents future outcomes from entering model development.
+
+The original data is not included in this repository.
+
+---
+
+## Versioning and Model Progression
+
+The repository keeps earlier modelling notebooks because each version answers a specific question or fixes a specific weakness.
+
+These versions are code iterations. They are not separately deployed model binaries.
+
+### Forecast versions
+
+| File                       | Purpose                            | What changed                                                                                                             |
+| -------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `forecast_version_0`       | Naive benchmark                    | Establishes the recent three-month average that later models must beat                                                   |
+| `forecast_version_1`       | First complete forecasting attempt | Introduces the chronological holdout, cohort model, scenarios and backtesting                                            |
+| `forecast_version_2`       | Shareable cohort core              | Separates the main forecast arithmetic into reusable functions                                                           |
+| `forecast_version_3`       | Working diagnostic version         | Adds regional checks, reconciliation and external-model comparison                                                       |
+| `forecast_version_4`       | Challenger comparison              | Adds Ridge regression and damped Holt alongside the cohort model                                                         |
+| `forecast_version_5_final` | Final forecast                     | Uses real calendar days, segment shrinkage, current-level factors, anomaly controls and stricter out-of-sample backtests |
+
+### Evaluation versions
+
+| File                         | Purpose                  | What changed                                                                                                                                                             |
+| ---------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `evaluation_version_0`       | Initial pilot evaluation | Uses matching and initial cost-effectiveness calculations                                                                                                                |
+| `evaluation_version_1_final` | Final pilot evaluation   | Adds age-adjusted Difference-in-Differences, rejects the weak East matched comparison, adds cluster bootstrap intervals and links each pilot to the most credible method |
+
+### Backbone files
+
+| File                           | Role                                                              |
+| ------------------------------ | ----------------------------------------------------------------- |
+| `data_cleaning_backbone`       | Final deterministic cleaning and chronological split              |
+| `feature_engineering_backbone` | Final contract-month panel, cohort backbone and reconciliation    |
+| `forecast_core.py`             | Shared forecast calculations used by the model-building notebooks |
+| `DECISION_LOG.md`              | Explains why each version exists and what changed                 |
+
+### Notebook and Python pairs
+
+Most notebooks have a matching `.py` file:
+
+```text
+forecast_version_5_final.ipynb
+forecast_version_5_final.py
+```
+
+The `.ipynb` file is intended for execution and presentation. The `.py` mirror makes changes easier to review with Git.
+
+The files can be synchronised with Jupytext:
+
+```bash
+jupytext --sync model_building/forecast_version_5_final.ipynb
+```
+
+Notebook outputs are removed before committing:
+
+```bash
+python tools/strip_notebook_outputs.py \
+  model_building/forecast_version_5_final.ipynb
+```
+
+Earlier repository versions used a folder called `models/`. The current repository uses `model_building/`. Git records the file history across this move, while the current folder gives readers one clear location for the modelling sequence.
+
+The shipped versions are:
+
+* `data_cleaning_backbone.ipynb`
+* `feature_engineering_backbone.ipynb`
+* `forecast_version_5_final.ipynb`
+* `evaluation_version_1_final.ipynb`
+
+Earlier versions remain available as an audit trail.
+
+See [`DECISION_LOG.md`](DECISION_LOG.md) for the full reasoning behind the progression.
+
+---
 
 ## Repository Structure
 
 ```text
 ForecastingDebtCollections/
 │
+├── .claude/
+│   └── README.md
+│
 ├── data_cleaning/
-│   └── data_cleaning_backbone.ipynb
+│   ├── data_cleaning_backbone.ipynb
+│   └── data_cleaning_backbone.py
 │
 ├── feature_engineering/
-│   └── feature_engineering_backbone.ipynb
+│   ├── feature_engineering_backbone.ipynb
+│   └── feature_engineering_backbone.py
 │
 ├── model_building/
-│   ├── forecast_version_0.ipynb            # naive benchmark
+│   ├── forecast_core.py
+│   ├── forecast_version_0.ipynb
+│   ├── forecast_version_0.py
 │   ├── forecast_version_1.ipynb
-│   ├── forecast_version_2.ipynb            # shareable core model
-│   ├── forecast_version_3.ipynb            # working notebook
-│   ├── forecast_version_4.ipynb            # challenger models
-│   ├── forecast_version_5_final.ipynb      # FINAL forecast
+│   ├── forecast_version_1.py
+│   ├── forecast_version_2.ipynb
+│   ├── forecast_version_2.py
+│   ├── forecast_version_3.ipynb
+│   ├── forecast_version_3.py
+│   ├── forecast_version_4.ipynb
+│   ├── forecast_version_4.py
+│   ├── forecast_version_5_final.ipynb
+│   ├── forecast_version_5_final.py
 │   ├── evaluation_version_0.ipynb
-│   └── evaluation_version_1_final.ipynb    # FINAL pilot evaluation
+│   ├── evaluation_version_0.py
+│   ├── evaluation_version_1_final.ipynb
+│   └── evaluation_version_1_final.py
 │
 ├── Tests/
+│   ├── README.md
+│   ├── conftest.py
+│   ├── p1_core.py
+│   ├── p2_core.py
+│   ├── test_feature_outputs.py
 │   ├── test_forecast_core.py
-│   ├── test_pilot_core.py
-│   └── test_feature_outputs.py
+│   └── test_pilot_core.py
 │
+├── tools/
+│   └── strip_notebook_outputs.py
+│
+├── .gitattributes
+├── .gitignore
 ├── AI_WORKFLOW.md
+├── DECISION_LOG.md
+├── data_dictionary.txt
 ├── requirements.txt
+├── requirements-dev.txt
+├── LICENSE
 └── README.md
 ```
 
-Each numbered version fixed a specific shortcoming in the one before it; the
-highest version number in each folder is the one that shipped.
+---
 
-The notebooks reproduce the full pipeline end to end: cleaning, feature engineering, the naive benchmark, and the version history behind the final forecast and pilot evaluation. Running them against real figures requires the private source data, which is not included here.
+## Tests
+
+The repository contains 66 tests across three areas.
+
+| Test group      | What it checks                                                                                    |
+| --------------- | ------------------------------------------------------------------------------------------------- |
+| Forecast core   | Calendar-day billing, component totals, scenarios, regional reconciliation and leakage protection |
+| Pilot core      | Known-effect recovery, no-effect behaviour, placebos, matching hygiene and budget rules           |
+| Feature outputs | Schema, chronological boundary, reconciliation and frozen feature controls                        |
+
+Run the tests from the repository root:
+
+```bash
+pip install -r requirements.txt
+FEATURES_DIR=/path/to/extracted/feature_outputs pytest -v Tests
+```
+
+If `FEATURES_DIR` is not supplied, the feature-output tests are skipped and the two core suites still run.
+
+See [`Tests/README.md`](Tests/README.md) for details.
+
+---
+
+## Technology
+
+| Category                              | Tools                                      |
+| ------------------------------------- | ------------------------------------------ |
+| Language                              | Python                                     |
+| Data analysis                         | Pandas, NumPy                              |
+| Machine learning                      | scikit-learn                               |
+| Statistical and time-series modelling | statsmodels                                |
+| Visualisation                         | Matplotlib                                 |
+| Notebooks                             | Jupyter Notebook, Google Colab and IPython |
+| Testing                               | pytest                                     |
+| Notebook versioning                   | Jupytext, nbdime and Git                   |
+| Documentation                         | Markdown, Mermaid and Shields.io           |
+| File handling                         | pathlib, zipfile, JSON and hashlib         |
+
+The project uses statistical and classical machine-learning methods. Deep learning is not required for this analysis.
+
+---
 
 ## Installation
-
-### Prerequisites
-
-* Python 3.10 or later
-* Git
-* Jupyter Notebook, JupyterLab or Google Colab
 
 ### Clone the repository
 
@@ -288,7 +422,7 @@ git clone https://github.com/Kinjuriu/ForecastingDebtCollections.git
 cd ForecastingDebtCollections
 ```
 
-### Create a virtual environment
+### Create an environment
 
 macOS or Linux:
 
@@ -304,16 +438,16 @@ python -m venv .venv
 .venv\Scripts\activate
 ```
 
-### Install the libraries
+### Install runtime dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-If a requirements file is not yet available:
+### Install notebook-versioning tools
 
 ```bash
-pip install pandas numpy matplotlib scikit-learn statsmodels jupyter
+pip install -r requirements-dev.txt
 ```
 
 ### Start Jupyter
@@ -322,109 +456,104 @@ pip install pandas numpy matplotlib scikit-learn statsmodels jupyter
 jupyter lab
 ```
 
-## Usage
+---
 
-### Google Colab
+## Running the Project
 
-1. Open the required public notebook in Google Colab.
-2. Upload an authorised local dataset when prompted.
-3. Run the notebook from top to bottom.
-4. Review the validation and quality checks.
+Run the final pipeline in this order:
 
-### Local Jupyter environment
+1. `data_cleaning/data_cleaning_backbone.ipynb`
+2. `feature_engineering/feature_engineering_backbone.ipynb`
+3. `model_building/forecast_version_5_final.ipynb`
+4. `model_building/evaluation_version_1_final.ipynb`
+5. `pytest -v Tests`
 
-```bash
-jupyter lab
-```
+Earlier forecast and evaluation versions are retained to show how the methods developed. They do not all need to be executed to reproduce the final workflow.
 
-Open the notebooks in numerical order.
+The private source files are required to reproduce the original figures. The code can be adapted to another collections dataset with a similar structure.
 
-The notebooks will not reproduce the confidential project figures without the authorised private input data. They can be adapted to another collections dataset with a similar structure.
-
-## Tests
-
-66 tests across three files, run with pytest from the `Tests/` folder:
-
-```bash
-pip install pytest pandas numpy scikit-learn statsmodels
-cd Tests
-FEATURES_DIR=/path/to/extracted/feature_outputs pytest -v
-```
-
-`FEATURES_DIR` should point at an unzipped feature-output folder; if it is not
-set, the feature-output tests skip and the two core suites still run.
-
-* **Forecast core** — hand-built fixtures with a calculator-checkable answer,
-  plus the invariants that must always hold (components sum to the total,
-  `low <= base <= high`, no leakage past the forecast origin).
-* **Pilot-evaluation core** — synthetic worlds with a known injected effect,
-  checking the method recovers it and reports no effect when there is none,
-  plus budget-allocation and matching-hygiene rules.
-* **Feature outputs** — schema and reconciliation checks against the frozen
-  feature files, when `FEATURES_DIR` is available.
+---
 
 ## Reproducibility
 
-| Setting          | Value                            |
-| ---------------- | --------------------------------- |
-| Python           | 3.10 or later                    |
-| Execution        | Jupyter or Google Colab          |
-| Validation       | Rolling time-based backtesting   |
-| Randomness       | Fixed random seed where required |
-| Hardware         | CPU only                         |
-| Package versions | Recorded in `requirements.txt`   |
-| Data access      | Private data loaded locally      |
+| Setting           | Value                          |
+| ----------------- | ------------------------------ |
+| Python            | 3.10 or later                  |
+| Execution         | Jupyter or Google Colab        |
+| Validation        | Rolling time-based backtesting |
+| Randomness        | Fixed seed where required      |
+| Hardware          | CPU only                       |
+| Runtime packages  | `requirements.txt`             |
+| Development tools | `requirements-dev.txt`         |
+| Data access       | Private files loaded locally   |
 
-Forecast parameters, assumptions and output files should be frozen before the final holdout period is evaluated.
+Forecast assumptions and output files were frozen before the final holdout period could be evaluated.
+
+[`AI_WORKFLOW.md`](AI_WORKFLOW.md) documents how AI-assisted suggestions were scoped, reviewed and validated.
+
+---
 
 ## Privacy and Responsible Use
 
 This repository does not include:
 
-* Raw or processed customer data.
-* Customer or contract identifiers.
-* Confidential company information.
+* Raw or processed customer data
+* Customer or contract identifiers
+* Confidential company information
+* Authentication credentials
+* Confidential presentations or source files
 
-Notebook outputs should be cleared before public commits. Any example data added later should be synthetic and should not reproduce real customer records.
+Notebook outputs are removed before public commits. Any demonstration data added later should be synthetic.
 
-## AI-Assisted Workflow
-
-AI assistants supported parts of the coding, debugging, review and documentation process.
-
-[`AI_WORKFLOW.md`](AI_WORKFLOW.md) explains how AI was used, how suggestions were checked and where human judgement remained necessary. It documents the process without publishing private prompts or conversations.
-
-All analytical decisions, code changes and final interpretations were reviewed by the project owner.
+---
 
 ## Limitations
 
-* The notebooks require the private source data to reproduce real forecast and pilot figures.
-* Forecasts depend on future sales and repayment behaviour remaining reasonably close to the stated assumptions.
-* Historical backtests cannot remove uncertainty about future sales-plan delivery.
-* The outreach programmes were observational rather than randomised.
+* The final holdout payment outcomes were not included in the supplied data.
+* Forecast performance depends heavily on delivery of the sales plan.
+* Scenario ranges are business sensitivities rather than formal prediction intervals.
+* The regional programmes were observational.
+* Difference-in-Differences cannot remove shocks affecting only one programme region.
 * Matching adjusts for recorded differences but cannot remove unobserved selection.
-* Service-ticket patterns can identify areas for investigation but cannot establish that a product issue caused lower repayment.
-* Results from one region may not transfer directly to another region.
+* The SMS result has not been tested outside its original region.
+* Product and service-ticket patterns support investigation but do not prove causation.
+* The private source data limits full public reproduction.
+
+---
 
 ## Future Work
 
 * Run a randomised outreach test within each region.
-* Monitor repayment changes over calendar time at a fixed contract age.
-* Recalibrate forecast ranges as new months become available.
-* Test whether programme effects differ by arrears level and customer segment.
-* Add synthetic example data for a fully public demonstration.
-* Convert the notebook workflow into reusable Python modules.
-* Add automated data-quality checks to continuous integration.
+* Test SMS transferability outside the original programme region.
+* Improve outbound-call targeting.
+* Refresh the forecast as new monthly data becomes available.
+* Add synthetic data for a fully public demonstration.
+* Add continuous integration for the test suite.
+* Automate notebook output stripping before commits.
+
+---
 
 ## Contributor
 
-| Contributor    | Role                                                      |
-| -------------- | ----------------------------------------------------------- |
-| Stephane Njoki | Data preparation, modelling, evaluation and documentation |
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/Kinjuriu">
+        <img src="https://github.com/Kinjuriu.png?size=120" width="120" alt="Stephane Njoki"><br>
+        <sub><b>Stephane Njoki</b></sub>
+      </a>
+      <br>
+      Data preparation, forecasting, causal evaluation, testing and documentation
+    </td>
+  </tr>
+</table>
 
 This is currently an individual portfolio project.
 
+---
+
 ## License
 
-The code is available under the MIT License. See [`LICENSE`](LICENSE) for details.
+This project is licensed under the [MIT License](LICENSE).
 
-The license does not grant access to or permission to use the private source data.
+The licence applies to the repository’s code and documentation. It does not grant access to the private source data.
