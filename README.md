@@ -257,6 +257,11 @@ ForecastingDebtCollections/
 │       ├── part2_pilot_v1.ipynb            # pilot evaluation, early version
 │       └── part2_pilot_final.ipynb         # pilot evaluation, final
 │
+├── Tests/
+│   ├── test_forecast_core.py
+│   ├── test_pilot_core.py
+│   └── test_feature_outputs.py
+│
 ├── AI_WORKFLOW.md
 ├── requirements.txt
 └── README.md
@@ -334,23 +339,25 @@ The notebooks will not reproduce the confidential project figures without the au
 
 ## Tests
 
-Run the test suite from the repository root:
+66 tests across three files, run with pytest from the `Tests/` folder:
 
 ```bash
-python -m unittest -v tests/test_forecasting_models.py
+pip install pytest pandas numpy scikit-learn statsmodels
+cd Tests
+FEATURES_DIR=/path/to/extracted/feature_outputs pytest -v
 ```
 
-The tests cover:
+`FEATURES_DIR` should point at an unzipped feature-output folder; if it is not
+set, the feature-output tests skip and the two core suites still run.
 
-* Notebook structure and required sections.
-* Forecast-month definitions.
-* Time-based leakage controls.
-* Metric calculations.
-* Scenario ordering.
-* Model output schemas.
-* Matching and budget calculations.
-* Synthetic-data behaviour.
-* Exclusion of sealed outcomes from model development.
+* **Forecast core** — hand-built fixtures with a calculator-checkable answer,
+  plus the invariants that must always hold (components sum to the total,
+  `low <= base <= high`, no leakage past the forecast origin).
+* **Pilot-evaluation core** — synthetic worlds with a known injected effect,
+  checking the method recovers it and reports no effect when there is none,
+  plus budget-allocation and matching-hygiene rules.
+* **Feature outputs** — schema and reconciliation checks against the frozen
+  feature files, when `FEATURES_DIR` is available.
 
 ## Reproducibility
 
