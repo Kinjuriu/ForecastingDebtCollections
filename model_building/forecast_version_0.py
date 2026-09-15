@@ -14,7 +14,7 @@
 # ---
 
 # %% [markdown]
-# # Public Backbone v0 — naive collections benchmark
+# # Forecast, version 0 — naive benchmark (backbone)
 #
 # This is a deliberately limited, reproducible benchmark suitable for GitHub. It uses only the aggregate country-month feature table and asks one question: **does a later forecasting model improve on simply carrying forward the recent three-month average?**
 #

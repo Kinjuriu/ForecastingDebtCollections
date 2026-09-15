@@ -14,7 +14,7 @@
 # ---
 
 # %% [markdown] id="1b9a072c"
-# # Part 2, final: which collections pilot is worth scaling, and how to spend $8,000 a month from October
+# # Evaluation, version 1 (FINAL): which collections pilot is worth scaling, and how to spend $8,000 a month from October
 #
 # It reads only the frozen v3 feature outputs (development data through 30 June 2026) and stops if anything later appears.
 #

@@ -14,7 +14,7 @@
 # ---
 
 # %% [markdown] id="fba417d5"
-# # Part 1, final: country collections forecast for July to September 2026
+# # Forecast, version 5 (FINAL): country collections forecast for July to September 2026
 #
 # It reads only the frozen feature outputs (`dlight_feature_engineering_outputs_v3.zip`, development data through 30 June 2026) and refuses to run if any row is dated later, so the sealed quarter can never enter the model.
 #

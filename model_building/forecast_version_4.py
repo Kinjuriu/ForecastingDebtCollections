@@ -14,7 +14,7 @@
 # ---
 
 # %% [markdown] id="m4U-DikZBKwv"
-# # Q3 2026 collections forecast — working notebook
+# # Forecast, version 4 — challenger models
 #
 # This notebook starts from the frozen `dlight_feature_engineering_outputs_v3.zip`. It does not reopen cleaning or feature engineering, and it never asks for or stores AI-assistant conversations. It writes the Q3 forecast before any Jul–Sep actuals are available.
 #
@@ -107,7 +107,7 @@ panel["sales_month"] = pd.to_datetime(panel["sales_month"])
 print("Loaded panel:", panel.shape)
 print("Loaded country-month table:", country_month.shape)
 
-# %% tags=["model_core"] id="BVJaOcE8BKxF"
+# %% id="BVJaOcE8BKxF" tags=["model_core"]
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import Ridge
@@ -256,7 +256,7 @@ qa_input = pd.DataFrame([
 display(qa_input)
 
 
-# %% tags=["cohort_core"] id="W5gz6rF1BKxH"
+# %% id="W5gz6rF1BKxH" tags=["cohort_core"]
 def _bool_series(s):
     if s.dtype == bool:
         return s

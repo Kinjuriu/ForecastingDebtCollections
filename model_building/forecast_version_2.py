@@ -12,41 +12,35 @@
 #     name: python3
 # ---
 
-# %% [markdown] id="acca18de"
-# # Collections, working model-build notebook
+# %% [markdown]
+# # Forecast, version 2 — shareable core model
 #
-# This is the working notebook, the one that actually builds the models, shows how
-# they behave, and produces the raw numbers used downstream. The clean, shareable
-# version of the same core logic is the separate `dlight_base_model.ipynb`
-# notebook; both import the very same tested library, so the arithmetic here is
-# identical to that one. What this notebook adds is the room to look, evaluate and
-# revise: data diagnostics before any modelling, a per-region validation read, an
-# explicit bottom-up versus top-down reconciliation, a slot to benchmark the model
-# built in the other workspace against this one, and a clean number block ready to
-# drop into a summary table.
-#
-# Scope of this notebook is Part 1, the base forecast. Part 2, the pilot
-# difference-in-differences, is a separate working notebook.
+# This is the base, shareable version of the July to September 2026 collections
+# forecast for the country. It is deliberately the simple, defensible core: a
+# cohort collection-curve applied bottom-up, with a base case plus a low and a
+# high, a naive floor to beat, a rolling-origin backtest, and a tornado that says
+# which assumption moves the number most. Outreach is held at zero here for causal
+# reasons, so nothing in this notebook uses the pilot logs, and nothing dated after
+# 30 June 2026 is ever loaded, so the sealed Q3 test cannot leak in.
 #
 # **Run order**
 #
 # 1. Run the setup cell.
-# 2. Upload `dlight_features.zip` when prompted.
-# 3. Run all remaining cells top to bottom.
-# 4. Download the output ZIP only after the QA table says PASS.
+# 2. Run the cell that writes the tested library to disk.
+# 3. Upload `dlight_features.zip` when the upload cell asks.
+# 4. Run all remaining cells top to bottom.
+# 5. Download the output ZIP only after the QA table at the end says PASS.
 #
-# Nothing dated after 30 June 2026 is ever loaded, so the sealed Jul to Sep test
-# cannot leak in, and outreach uplift is held at zero in the base for causal reasons.
-#
-# **Revision log** (fill in as we iterate)
-#
-# - v1: first bottom-up cohort-curve build.
+# Where a non-technical reader would want to rebuild a number in a spreadsheet, the
+# Google Sheets version of the calculation sits in a comment next to the Python,
+# marked `SHEETS:`.
 #
 
-# %% [markdown] id="fbe0a995"
+# %% [markdown]
 # ## Setup
 
-# %% colab={"base_uri": "https://localhost:8080/"} id="0fa90851" outputId="0d04e471-df32-489f-fd81-b098a1295a65"
+# %%
+# Colab already ships pandas, numpy and statsmodels; this is just a safety net.
 import io, json, zipfile
 from pathlib import Path
 import numpy as np
@@ -56,25 +50,21 @@ try:
 except Exception:
     import subprocess, sys
     subprocess.run([sys.executable, "-m", "pip", "install", "-q", "statsmodels"])
-try:
-    import matplotlib.pyplot as plt
-    _HAVE_PLT = True
-except Exception:
-    _HAVE_PLT = False
 
-pd.set_option("display.width", 170)
-pd.set_option("display.max_columns", 50)
-print("setup ready; plotting:", _HAVE_PLT)
+pd.set_option("display.width", 160)
+pd.set_option("display.max_columns", 40)
+print("setup ready")
 
-# %% [markdown] id="c559973c"
+# %% [markdown]
 # ## The tested core library
 #
-# All the real arithmetic lives in `dlight_forecast.py`, written to disk by the cell
-# below and imported straight after. This is the same file the test suite imports
-# and the same file the shareable notebook writes, so the working notebook, the
-# shareable notebook and the tests can never drift apart.
+# Everything that does real arithmetic lives in one file, `dlight_forecast.py`,
+# which the cell below writes to disk. This is the exact same code the test file
+# `test_dlight_base_model.py` imports and checks, so the notebook and the tests can
+# never quietly disagree. Read it if you want to see the mechanics; run it to make
+# the functions available.
 
-# %% colab={"base_uri": "https://localhost:8080/"} id="59e48092" outputId="980b67bc-c1fe-4808-e260-e05a6c118459"
+# %%
 # %%writefile dlight_forecast.py
 """
 dlight_forecast.py
@@ -710,19 +700,24 @@ def qa_passed(qa: pd.DataFrame) -> bool:
 
 
 
-# %% colab={"base_uri": "https://localhost:8080/"} id="0128a3e5" outputId="49775543-9e4e-4c54-fcca-864ca814b378"
+# %%
 import dlight_forecast as F
 from dlight_forecast import (DATA_END, ESTIMATION_END, FORECAST_MONTHS,
                              SALES_PLAN, PILOT_REGIONS, NON_PILOT_REGIONS)
-print("forecasting", [str(m) for m in FORECAST_MONTHS],
-      "| base curve regions", NON_PILOT_REGIONS)
+print("library loaded; forecasting", [str(m) for m in FORECAST_MONTHS])
 
-# %% [markdown] id="f2a6e8b8"
-# ## Load the feature-engineering outputs, and stop on leakage
+# %% [markdown]
+# ## Load the feature-engineering outputs
+#
+# Upload the single ZIP you built in Step 2, `dlight_features.zip`.
+# The loader reads the panel, the contract features, the two collection curves and
+# the metrics file straight out of the ZIP, matching each by a word in its name so
+# small naming differences do not matter. Q3 actuals are never in this ZIP and are
+# never read.
 
-# %% colab={"base_uri": "https://localhost:8080/", "height": 92} id="7220299c" outputId="c6a11179-26a6-4056-e121-a16cb995c8bf"
+# %%
 from google.colab import files
-up = files.upload()   # dlight_features.zip
+up = files.upload()   # choose dlight_features.zip
 zip_name = [n for n in up if n.lower().endswith(".zip")][0]
 zf = zipfile.ZipFile(io.BytesIO(up[zip_name]))
 
@@ -732,30 +727,40 @@ def _member(zf, must, mustnt=()):
         if all(w in low for w in must) and not any(b in low for b in mustnt):
             return n
     raise FileNotFoundError(f"No member matches {must}")
+
 def _csv(zf, must, mustnt=()):
     return pd.read_csv(io.BytesIO(zf.read(_member(zf, must, mustnt))))
 
-contracts  = _csv(zf, ["contract", "features"])
-panel      = _csv(zf, ["panel"])
-curve_treg = _csv(zf, ["curve", "type", "region"])
-metrics    = json.loads(zf.read(_member(zf, ["feature", "metrics"])))
+contracts   = _csv(zf, ["contract", "features"])
+panel       = _csv(zf, ["panel"])
+curve_type  = _csv(zf, ["curve", "type"], mustnt=["region"])
+curve_treg  = _csv(zf, ["curve", "type", "region"])
+metrics     = json.loads(zf.read(_member(zf, ["feature", "metrics"])))
+
 contracts["sales_month"] = pd.to_datetime(contracts["sales_month"])
 panel["pay_month"] = pd.to_datetime(panel["pay_month"])
+print("loaded:", {"contracts": len(contracts), "panel_rows": len(panel)})
+print("schema_version:", metrics.get("schema_version"))
 
+# %% [markdown]
+# ### Leakage guard
+#
+# This is the hard stop. If the panel or the contracts carry anything dated after
+# 30 June 2026, the ZIP was built from the wrong (sealed) data and the notebook
+# refuses to go on.
+
+# %%
 F.assert_no_leakage(panel, contracts)
-print("loaded and leakage-clean:", {"contracts": len(contracts),
-      "panel_rows": len(panel), "schema": metrics.get("schema_version")})
+print("leakage guard passed; nothing after", DATA_END.date())
 
-# %% [markdown] id="5c182eea"
+# %% [markdown]
 # ### Column check
 #
-# Because this notebook loads your own feature track, and your feature engineering
-# deliberately differs from the other one, this quick check lists any core column the
-# pipeline needs but cannot find, so a naming difference shows up here as a plain
-# message rather than a confusing error later. It warns, it does not stop; the
-# leakage guard above stays the only hard stop.
+# A quick check that lists any core column the pipeline needs but cannot find in the
+# uploaded feature outputs, so a naming difference shows up here as a plain message
+# rather than a confusing error later. It warns, it does not stop.
 
-# %% id="f6401f2a" colab={"base_uri": "https://localhost:8080/"} outputId="8e4b7468-38d3-4dd2-f7db-6dd960426c25"
+# %%
 need_panel = ["pay_month", "region", "contract_type", "mob",
               "expected_this_month", "paid"]
 need_contracts = ["contractid", "sales_month", "region", "contract_type",
@@ -763,252 +768,214 @@ need_contracts = ["contractid", "sales_month", "region", "contract_type",
 miss_p = [c for c in need_panel if c not in panel.columns]
 miss_c = [c for c in need_contracts if c not in contracts.columns]
 if miss_p or miss_c:
-    print("WARNING, columns not found (rename in your feature step, or tell me and I will map them):")
+    print("WARNING, columns not found (rename in your feature step, or map them):")
     if miss_p: print("  panel is missing:", miss_p)
     if miss_c: print("  contracts is missing:", miss_c)
 else:
-    print("column check passed; all core columns present in your feature outputs")
+    print("column check passed; all core columns present")
 
-# %% [markdown] id="ccb45e2f"
-# ## Diagnostics before modelling
+# %% [markdown]
+# ## Step 1: learn the monthly collection curve
 #
-# Before trusting any forecast, look at the shape of what we are modelling: how
-# country collections have moved month to month, how the collection curve rises with
-# age and whether the pilot regions really do sit above the non-pilot ones after
-# April, how big the recent cohorts are, and how the cash and financed mix has been
-# drifting. If any of these look wrong, the model built on them is wrong, and this is
-# where we would catch it and revise.
-
-# %% id="caa40d3c" colab={"base_uri": "https://localhost:8080/", "height": 577} outputId="36481930-9985-4de5-de79-d8b9203171f1"
-hist = F.country_monthly_collections(panel)
-print("country monthly collections, last 6 months:")
-display(hist.tail(6).round(0).to_frame("collections_usd"))
-if _HAVE_PLT:
-    ax = hist.plot(figsize=(9, 3), marker="o", title="Country monthly collections")
-    ax.set_xlabel(""); plt.tight_layout(); plt.show()
-
-# %% id="cfe7af9d" colab={"base_uri": "https://localhost:8080/", "height": 829} outputId="59a53951-ddc5-42fd-d7f1-8af60d67d3ef"
-# Collection curve by region and type, to see the pilot effect after April.
-ct = curve_treg.copy()
-piv = ct.pivot_table(index="mob", columns=["contract_type", "region"],
-                     values="pooled_efficiency")
-display(piv.round(3).iloc[:13])
-if _HAVE_PLT and ("FINANCED" in ct["contract_type"].unique()):
-    fin = ct[ct["contract_type"] == "FINANCED"]
-    ax = fin.pivot_table(index="mob", columns="region",
-                         values="pooled_efficiency").iloc[:13].plot(
-                         figsize=(9, 3.2), marker=".",
-                         title="FINANCED collection efficiency by region (pilot vs non-pilot)")
-    ax.set_xlabel("months on book"); plt.tight_layout(); plt.show()
-
-# %% id="ca7693e0" colab={"base_uri": "https://localhost:8080/", "height": 539} outputId="df54c9c4-6b95-488f-cd5a-1c1fbe60dc3a"
-# Recent cohort sizes and cash/financed mix over time.
-cohort = (contracts.assign(m=contracts["sales_month"].dt.to_period("M"))
-          .groupby(["m", "contract_type"]).size().unstack(fill_value=0))
-display(cohort.tail(6))
-mix = cohort.div(cohort.sum(axis=1), axis=0).round(3)
-print("recent cash/financed mix by sales month:")
-display(mix.tail(6))
-
-# %% [markdown] id="32139090"
-# ## Champion model: cohort collection-curve, bottom-up
+# For each contract type and each month on book, the curve is simply the money
+# actually paid divided by the money that was due that month, learned on data
+# through March 2026 and on the non-pilot regions North and South only, so the
+# April onward pilot effect in East and West cannot leak into the base rate.
 #
-# Learn the marginal monthly rate by type and age on data through March 2026 from
-# the non-pilot regions only, project the existing book's billing into July, August
-# and September and apply the age-appropriate rate, add the post-tenor recovery
-# stream, then add the plan's new sales split by the recent mix, with cash collected
-# in full in the sale month and financed running deposit plus early-life curve. The
-# components are kept separate so we can see which part drives the total.
+# `SHEETS:` rate = `=SUMIFS(paid, type, "FINANCED", mob, 3) / SUMIFS(due, type, "FINANCED", mob, 3)`.
 
-# %% id="1d957306" colab={"base_uri": "https://localhost:8080/", "height": 197} outputId="261aea32-b081-4c3f-fd56-5a69cb7e0b47"
-curve = F.learn_marginal_curve(panel, regions=NON_PILOT_REGIONS,
-                               keys=("contract_type",))
+# %%
+curve = F.learn_marginal_curve(panel, estimation_end=ESTIMATION_END,
+                               regions=NON_PILOT_REGIONS, keys=("contract_type",))
 rate_lut = F.rate_lookup(curve)
 cum_days = F.build_days_index()
-profile = F.recent_sales_profile(contracts)
-post_tenor = F.forecast_post_tenor(panel)
+show = curve.pivot_table(index="contract_type", columns="mob", values="marginal_rate")
+display(show.round(3).iloc[:, :13])
+print("FINANCED month-0 rate:", round(F.get_rate(rate_lut, "FINANCED", 0), 4),
+      "| CASH month-0 rate:", round(F.get_rate(rate_lut, "CASH", 0), 4))
+
+# %% [markdown]
+# ## Step 2: the existing book
+#
+# Each existing contract is carried forward to July, August and September at its
+# own age, and its expected billing that month is run through the curve. Cash
+# contracts were billed in full in their sale month, which is already in the past,
+# so the existing cash book adds almost nothing; financed contracts bill a daily
+# amount times the days in the month, capped at what they still owe.
+#
+# `SHEETS:` collection = `=expected_this_month * VLOOKUP(mob, rateTable, 2, FALSE)`.
+
+# %%
 billing = F.project_existing_billing(contracts, cum_days, FORECAST_MONTHS)
+existing = F.forecast_existing_book(billing, rate_lut)
+existing_by_month = (existing.groupby("forecast_month")["collection"].sum()
+                     .reindex(FORECAST_MONTHS))
+display(existing_by_month.rename("existing_book_usd").round(0).to_frame())
 
-base = F.run_forecast(billing, rate_lut, cum_days, profile, post_tenor, FORECAST_MONTHS)
+# %% [markdown]
+# ## Step 3: post-tenor recovery
+#
+# Some cash keeps arriving on contracts that have already finished their schedule,
+# as late catch-up and post-payoff payments. We take the recent three-month average
+# of that stream and carry it forward flat.
+#
+# `SHEETS:` `=AVERAGEIFS(paid, expected_this_month, 0, month, ">=Apr-26")`.
+
+# %%
+post_tenor = F.forecast_post_tenor(panel)
+print("post-tenor recovery, flat monthly estimate:", round(post_tenor, 2))
+
+# %% [markdown]
+# ## Step 4: new sales from the plan
+#
+# The agreed plan is 3,100 units in July and 3,200 in each of August and September.
+# We split them by the recent cash and financed mix and average economics, collect
+# cash units in full in the sale month, and run financed units through their deposit
+# and early-life instalments.
+
+# %%
+profile = F.recent_sales_profile(contracts)
+new_sales = F.forecast_new_sales(profile, rate_lut, cum_days, plan=SALES_PLAN)
+print("recent mix and economics:", {k: round(v, 3) for k, v in profile.items()})
+display(new_sales.assign(forecast_month=lambda d: d["forecast_month"].astype(str)))
+
+# %% [markdown]
+# ## Step 5: the base forecast (existing book + post-tenor + new sales)
+
+# %%
+base = F.run_forecast(billing, rate_lut, cum_days, profile, post_tenor,
+                      FORECAST_MONTHS)
 base_show = base.assign(forecast_month=lambda d: d["forecast_month"].astype(str))
-print("recent sales profile:", {k: round(v, 3) for k, v in profile.items()})
-print("post-tenor monthly:", round(post_tenor, 2))
 display(base_show.round(0))
-print("Q3 base total:", round(float(base['total'].sum()), 0))
+print("Q3 base total:", round(float(base["total"].sum()), 0))
 
-# %% [markdown] id="69c39a24"
-# ## Validation with rolling origins, and per region
+# %% [markdown]
+# ## Step 6: floors to beat, and a top-down cross-check
 #
-# Never a random split. We stand at the end of December 2025 and predict the first
-# quarter of 2026 for a pre-pilot stability read, then stand at the end of March 2026
-# and predict April to June, the pilot era closest to the sealed target, always with
-# the base curve learned from the non-pilot regions so the pilot uplift does not leak
-# in, and always scored next to the naive floor. July to September 2026 stays sealed
-# and is never scored here. We also run the pilot-era origin region by region, so a
-# single bad region cannot hide inside a good country average.
+# Two floors a reader can check by hand, the recent three-month average and the same
+# three months a year earlier, plus an ETS trend model on financed collections with
+# no twelve-month seasonal term because there is under two years of history. If the
+# bottom-up base and the top-down cross-check land close and both beat the naive
+# floor, that earns confidence; if they diverge, the gap is itself a finding.
 
-# %% id="dd2eb0b2" colab={"base_uri": "https://localhost:8080/", "height": 341} outputId="ceaaed94-e113-41f0-9c17-1b6bbc8b1dcf"
-for label, origin in [("Dec-2025 -> Q1-2026 (pre-pilot)", pd.Timestamp("2025-12-31")),
-                      ("Mar-2026 -> Apr-Jun (pilot era)", pd.Timestamp("2026-03-31"))]:
-    bt = F.rolling_origin_backtest(panel, origin, 3)
-    print(f"\n{label}:  model MAPE {bt.attrs['model_MAPE']}  vs  naive MAPE {bt.attrs['naive_MAPE']}")
-    display(bt.round({'actual':0,'model_pred':0,'naive_pred':0,
-                      'model_abs_err':0,'naive_abs_err':0,'model_ape':4,'naive_ape':4}))
-
-# %% id="dc230c54" colab={"base_uri": "https://localhost:8080/", "height": 175} outputId="25f4c38d-26c3-4307-ec8e-68b55574eb0b"
-# Per-region pilot-era read: learn each region's own curve from its own history.
-rows = []
-for reg in ["North", "South", "East", "West"]:
-    sub = panel[panel["region"] == reg]
-    try:
-        bt = F.rolling_origin_backtest(sub, pd.Timestamp("2026-03-31"), 3, base_regions=[reg])
-        rows.append({"region": reg, "model_MAPE": bt.attrs["model_MAPE"],
-                     "naive_MAPE": bt.attrs["naive_MAPE"],
-                     "pilot": reg in PILOT_REGIONS})
-    except Exception as e:
-        rows.append({"region": reg, "model_MAPE": None, "naive_MAPE": None, "note": str(e)[:40]})
-display(pd.DataFrame(rows))
-
-# %% [markdown] id="05c2dcee"
-# ## Bottom-up versus top-down reconciliation
-#
-# The bottom-up cohort build should land near the top-down cross-checks: the recent
-# three-month average floor, the same three months last year, and the ETS trend on
-# financed collections with no twelve-month seasonal term given under two cycles of
-# history. If they land close and the bottom-up beats the naive floor, that earns
-# confidence; if they diverge, the gap is the finding to explain, not to paper over.
-
-# %% id="0dbdcaf9" colab={"base_uri": "https://localhost:8080/", "height": 161} outputId="cdc0d75a-b598-4b89-b742-fde3c951564b"
+# %%
 floors = F.naive_baselines(panel, FORECAST_MONTHS)
 ets = F.ets_crosscheck(panel, FORECAST_MONTHS)
-bottom_up_total = float(base["total"].sum())
-recon = pd.DataFrame({
-    "view": ["bottom-up cohort (champion)", "naive recent 3-month average x3",
-             "ETS trend on financed x3"],
-    "Q3_total": [bottom_up_total, floors["recent_3m_avg"] * 3, float(np.nansum(ets["values"]))],
-})
-recon["gap_vs_champion_%"] = ((recon["Q3_total"] / bottom_up_total - 1) * 100).round(1)
-display(recon.round({"Q3_total": 0}))
-spread = recon["Q3_total"].max() / recon["Q3_total"].min() - 1
-print("verdict:", "views agree within 15%, confidence earned"
-      if spread < 0.15 else f"views diverge by {spread:.0%}, investigate before trusting")
+print("recent 3-month average (flat floor):", round(floors["recent_3m_avg"], 0))
+print("same month last year:",
+      {str(k): (round(v, 0) if v == v else None) for k, v in floors["same_month_last_year"].items()})
+print("ETS cross-check on financed:", ets["method"],
+      [round(v, 0) for v in ets["values"]])
 
-# %% [markdown] id="c37f7d96"
-# ## Scenarios and tornado
+# %% [markdown]
+# ## Step 7: rolling-origin validation (never a random split)
+#
+# We stand at the end of December 2025 and predict the first quarter of 2026 for a
+# pre-pilot stability read, then stand at the end of March 2026 and predict April to
+# June, the pilot era closest to the target, with the base curve still learned from
+# the non-pilot regions so the pilot uplift does not leak in. Each is scored against
+# the naive floor, always forward in time.
+
+# %%
+bt_pre = F.rolling_origin_backtest(panel, pd.Timestamp("2025-12-31"), 3)
+bt_pilot = F.rolling_origin_backtest(panel, pd.Timestamp("2026-03-31"), 3)
+print("Dec-2025 -> Q1-2026 : model MAPE", bt_pre.attrs["model_MAPE"],
+      "vs naive MAPE", bt_pre.attrs["naive_MAPE"])
+display(bt_pre)
+print("Mar-2026 -> Apr-Jun : model MAPE", bt_pilot.attrs["model_MAPE"],
+      "vs naive MAPE", bt_pilot.attrs["naive_MAPE"])
+display(bt_pilot)
+
+# %% [markdown]
+# ## Step 8: scenarios, sized from calendar shocks
 #
 # The band width comes from how much the whole country's monthly collection rate
-# wobbles month to month, not from cohort sampling error, because every contract in a
-# month shares one economy. The low softens the rate by about two of those wobbles
-# and trims sales; the high lifts it by about one, kept tighter because the drift and
-# the unconfirmed product reports point risk downward. The tornado then ranks which
-# assumption moves the Q3 total most; on the real book we expect the existing-book
-# rate first and new-sales volume and mix next, but the ranking is read from the data.
+# wobbles month to month, not from cohort sampling error, because every contract in
+# a month lives through the same economy. The low softens the rate by about two of
+# those wobbles and trims sales a little; the high lifts it by about one, kept
+# tighter on the upside because the drift and the unconfirmed product reports point
+# the risk downward.
+#
+# `SHEETS:` low = `=base*(1 - 2*sigma - trim)`, high = `=base*(1 + sigma)`.
 
-# %% id="e31ce5f7" colab={"base_uri": "https://localhost:8080/", "height": 404} outputId="ff5e5267-49cb-4d88-8926-130fc865e9c0"
+# %%
 sigma = F.calendar_shock_sigma(panel)
-forecast_table = F.build_scenarios(billing, rate_lut, cum_days, profile, post_tenor, sigma)
-print("calendar-shock sigma:", round(sigma, 4))
+forecast_table = F.build_scenarios(billing, rate_lut, cum_days, profile,
+                                   post_tenor, sigma)
+print("calendar-shock sigma on the monthly collection rate:", round(sigma, 4))
 display(forecast_table)
-print("Q3  base", round(forecast_table['base'].sum(),0),
-      "| low", round(forecast_table['low'].sum(),0),
-      "| high", round(forecast_table['high'].sum(),0))
+print("Q3 totals  base:", round(forecast_table["base"].sum(), 0),
+      "| low:", round(forecast_table["low"].sum(), 0),
+      "| high:", round(forecast_table["high"].sum(), 0))
+
+# %% [markdown]
+# ## Step 9: tornado, which assumption moves the number most
+#
+# Each assumption is moved one at a time across a plausible range and we record the
+# swing in the total Q3 forecast. On the real book, where existing collections
+# dominate, we expect the existing-book collection rate to move it most and new
+# sales next; whatever comes out on top is read straight from the data and is the
+# line to put on the assumptions slide.
+
+# %%
 torn = F.tornado(billing, rate_lut, cum_days, profile, post_tenor, sigma)
-print("\nbase Q3 total:", torn.attrs["base_total"])
+print("base Q3 total:", torn.attrs["base_total"])
 display(torn)
 
-# %% [markdown] id="4b0d1fdf"
-# ## Benchmark against the model from the other workspace
+# %% [markdown]
+# ## Step 10: QA gate, then download
 #
-# Paste the monthly country totals from the separately built model into `external`
-# below, keyed by month; leave it as `None` on runs where there is nothing to compare
-# yet. When it is present, we line the two forecasts up month by month, show the gap
-# in dollars and per cent, and flag any month where they disagree by more than ten
-# per cent, which is the threshold worth a conversation about why. This is a
-# benchmark, not a merge: the champion number on the slide stays the bottom-up one
-# unless we deliberately decide otherwise.
+# The output ZIP is only written if every named check passes. These are the leakage
+# guards and the internal-consistency checks: nothing after June 2026, the forecast
+# months are exactly July to September 2026, no outreach column was used, the region
+# pieces of the billing add up to the country total, the sales plan totals are right,
+# and the base sits inside the low and high every month.
 
-# %% id="f4ad1c2c" colab={"base_uri": "https://localhost:8080/"} outputId="c61a6a06-b52f-4d2f-f48f-a19a2ba6ad8f"
-# EDIT THIS: paste the other model's monthly country collection totals, or leave None.
-external = None
-# example:
-# external = {"2026-07": 000000.0, "2026-08": 000000.0, "2026-09": 000000.0}
-
-if external is None:
-    print("no external model provided yet; skipping benchmark")
-else:
-    ext = pd.Series({pd.Period(k, "M"): v for k, v in external.items()}).reindex(FORECAST_MONTHS)
-    cmp = pd.DataFrame({
-        "month": [str(m) for m in FORECAST_MONTHS],
-        "champion_bottom_up": base.set_index("forecast_month")["total"].reindex(FORECAST_MONTHS).values,
-        "external_model": ext.values,
-    })
-    cmp["diff_usd"] = cmp["external_model"] - cmp["champion_bottom_up"]
-    cmp["diff_%"] = (cmp["external_model"] / cmp["champion_bottom_up"] - 1) * 100
-    cmp["flag"] = np.where(cmp["diff_%"].abs() > 10, "DIVERGES >10%", "agrees")
-    display(cmp.round({"champion_bottom_up":0,"external_model":0,"diff_usd":0,"diff_%":1}))
-    print("Q3 champion", round(cmp['champion_bottom_up'].sum(),0),
-          "| Q3 external", round(cmp['external_model'].sum(),0),
-          "| overall gap", f"{(cmp['external_model'].sum()/cmp['champion_bottom_up'].sum()-1)*100:.1f}%")
-
-# %% [markdown] id="788e73b8"
-# ## QA gate, slide numbers, and download
-#
-# The QA table repeats the leakage and consistency checks, and the output ZIP is only
-# written if every one passes. The number block printed just under it is the clean,
-# copy-ready figure for the summary table: one row per month, base, low and high, plus
-# the Q3 totals and the single top tornado driver to put on the assumptions slide.
-
-# %% id="0b18bbc6" colab={"base_uri": "https://localhost:8080/", "height": 479} outputId="b8521398-881d-4430-dc07-2d207b83d3d9"
+# %%
 qa = F.qa_table(panel, contracts, forecast_table, billing, metrics)
 display(qa)
 ok = F.qa_passed(qa)
 print("QA PASSED:", ok)
 
-if ok:
-    slide = forecast_table.copy()
-    slide["base"] = slide["base"].round(0); slide["low"] = slide["low"].round(0); slide["high"] = slide["high"].round(0)
-    print("\n=== SLIDE NUMBERS (country collections forecast, USD) ===")
-    print(slide.to_string(index=False))
-    print("\nQ3 total  base", int(forecast_table['base'].sum()),
-          "| low", int(forecast_table['low'].sum()),
-          "| high", int(forecast_table['high'].sum()))
-    print("top tornado driver:", torn.iloc[0]['assumption'],
-          "(swing", int(torn.iloc[0]['abs_swing']), "USD)")
-
-# %% id="2ee6c8d4" colab={"base_uri": "https://localhost:8080/", "height": 55} outputId="172f864c-e5ea-4e42-ede8-d13cfd26b240"
+# %%
 if not F.qa_passed(qa):
-    raise SystemExit("QA did not pass; fix the failing checks before shipping a number.")
+    raise SystemExit("QA did not pass; not writing an output. Fix the failing checks first.")
 
-OUT = Path("/content/dlight_model_build_outputs"); OUT.mkdir(exist_ok=True)
+OUT = Path("/content/dlight_forecast_outputs"); OUT.mkdir(exist_ok=True)
 forecast_table.to_csv(OUT/"forecast_table.csv", index=False)
 base.assign(forecast_month=lambda d: d["forecast_month"].astype(str)) \
     .to_csv(OUT/"forecast_components.csv", index=False)
-recon.to_csv(OUT/"reconciliation_bottomup_vs_topdown.csv", index=False)
+bt_pre.to_csv(OUT/"backtest_pre_pilot_Q1_2026.csv", index=False)
+bt_pilot.to_csv(OUT/"backtest_pilot_era_AprJun_2026.csv", index=False)
 torn.to_csv(OUT/"tornado.csv", index=False)
 qa.to_csv(OUT/"qa_checks.csv", index=False)
 json.dump({
     "forecast_months": [str(m) for m in FORECAST_MONTHS],
     "sales_plan": {str(k): v for k, v in SALES_PLAN.items()},
     "base_curve_regions": NON_PILOT_REGIONS,
+    "estimation_end": str(ESTIMATION_END.date()),
+    "data_end": str(DATA_END.date()),
     "calendar_shock_sigma": round(float(sigma), 6),
     "post_tenor_monthly": round(float(post_tenor), 2),
     "recent_sales_profile": {k: round(float(v), 4) for k, v in profile.items()},
     "outreach_uplift_in_base": 0.0,
-    "top_tornado_driver": str(torn.iloc[0]["assumption"]),
+    "ets_crosscheck": ets,
+    "naive_recent_3m_avg": round(float(floors["recent_3m_avg"]), 2),
 }, open(OUT/"assumptions.json", "w"), indent=2)
 
-zpath = "/content/dlight_model_build_outputs.zip"
+zpath = "/content/dlight_forecast_outputs.zip"
 with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
     for p in OUT.iterdir():
         z.write(p, arcname=p.name)
 from google.colab import files as dl
 dl.download(zpath)
-print("wrote and downloaded:", sorted(p.name for p in OUT.iterdir()))
+print("wrote and downloaded:", [p.name for p in OUT.iterdir()])
 
-# %% [markdown] id="4e81819b"
-# ## Next
+# %% [markdown]
+# ## Stop here
 #
-# When Part 1 reads clean here, the figures in the block above are what goes into
-# the summary outputs. Part 2, the pilot evaluation with a difference-in-differences design
-# against the non-pilot regions across the April break and the 8,000 dollar monthly
-# budget recommendation, is the next working notebook.
+# Part 1 is done: one forecast table with a base, low and high per month, a method
+# that a reader can follow, a naive floor it beats, a rolling-origin backtest and a
+# tornado. Part 2, the pilot evaluation with a difference-in-differences design
+# against the non-pilot regions, is the next notebook; this base notebook stays
+# clean and free of the internal reconciliation metrics.

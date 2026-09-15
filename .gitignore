@@ -8,12 +8,17 @@
 # Material that isn't ours to publish (client-provided instructions, decks).
 *.pptx
 
-# Draft/scratch notebooks — everything except the versioned copies in
-# final/. These are root-anchored so final/data_cleaning/ and
-# final/feature_engineering/ are not swept up too.
+# Draft/scratch material. data_cleaning/ and feature_engineering/ hold
+# both the shipped backbone notebook and a lot of untracked draft
+# versions in the same folder, so everything in each is ignored except
+# the one backbone notebook (plus its jupytext mirror).
 /jupyter_files/
-/data_cleaning/
-/feature_engineering/
+/data_cleaning/*
+!/data_cleaning/data_cleaning_backbone.ipynb
+!/data_cleaning/data_cleaning_backbone.py
+/feature_engineering/*
+!/feature_engineering/feature_engineering_backbone.ipynb
+!/feature_engineering/feature_engineering_backbone.py
 /models/
 /TEST DATA/
 .ipynb_checkpoints/

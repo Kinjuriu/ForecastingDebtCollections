@@ -14,7 +14,7 @@
 # ---
 
 # %% [markdown] id="EB06y-zWVSzx"
-# # Part 2 — regional collections pilot evaluation
+# # Evaluation, version 0 — regional collections pilot evaluation
 #
 # This notebook evaluates two regional outreach pilots: East's preventative SMS pilot and West's outbound-call pilot. It is separate from the Part 1 collections forecast. Each pilot is compared against contemporaneous, within-region customers with similar pre-treatment histories. Because assignment was not randomized, the result is a **quasi-experimental estimate**, not definitive causal proof.
 #
@@ -91,7 +91,7 @@ if panel["month"].max() > VALIDATION_END:
 print("Panel rows:", len(panel), "| outreach rows:", len(pilot_raw))
 
 
-# %% tags=["pilot_core"] id="RDyAcqtjVSz2"
+# %% id="RDyAcqtjVSz2" tags=["pilot_core"]
 def safe_divide(numerator, denominator):
     return float(numerator / denominator) if denominator not in (0, 0.0) and pd.notna(denominator) else np.nan
 
@@ -244,7 +244,7 @@ if forbidden_predictors.intersection(NUMERIC + CATEGORICAL):
 print("Primary analysis rows:", len(analysis), "| treated:", int(analysis["treated"].sum()), "| controls:", int((analysis["treated"] == 0).sum()))
 
 
-# %% tags=["pilot_model"] id="7c0ubUG1VSz3"
+# %% id="7c0ubUG1VSz3" tags=["pilot_model"]
 def evaluate_programme(data, region, neighbours=3):
     sub = data[data["programme_region"].eq(region)].copy()
     treated = sub[sub["treated"].eq(1)].copy()

@@ -14,7 +14,7 @@
 # ---
 
 # %% [markdown]
-# # Part 1 — Collections Forecast
+# # Forecast, version 1
 #
 # This notebook is designed for **Google Colab** and keeps the forecasting workflow auditable.
 #

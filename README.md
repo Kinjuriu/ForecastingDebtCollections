@@ -242,20 +242,21 @@ The modelling uses statistical and classical machine-learning methods. No deep-l
 ```text
 ForecastingDebtCollections/
 │
-├── final/
-│   ├── data_cleaning/
-│   │   └── data_cleaning_backbone.ipynb
-│   ├── feature_engineering/
-│   │   └── feature_engineering_backbone.ipynb
-│   └── model_building/
-│       ├── public_backbone_v0.ipynb        # naive benchmark
-│       ├── part1_forecast_v1.ipynb         # forecast, early version
-│       ├── part1_forecast_v2_core.ipynb    # forecast, shareable core
-│       ├── part1_forecast_v2_working.ipynb # forecast, working notebook
-│       ├── part1_forecast_v3_challenger.ipynb
-│       ├── part1_forecast_final.ipynb      # forecast, final
-│       ├── part2_pilot_v1.ipynb            # pilot evaluation, early version
-│       └── part2_pilot_final.ipynb         # pilot evaluation, final
+├── data_cleaning/
+│   └── data_cleaning_backbone.ipynb
+│
+├── feature_engineering/
+│   └── feature_engineering_backbone.ipynb
+│
+├── model_building/
+│   ├── forecast_version_0.ipynb            # naive benchmark
+│   ├── forecast_version_1.ipynb
+│   ├── forecast_version_2.ipynb            # shareable core model
+│   ├── forecast_version_3.ipynb            # working notebook
+│   ├── forecast_version_4.ipynb            # challenger models
+│   ├── forecast_version_5_final.ipynb      # FINAL forecast
+│   ├── evaluation_version_0.ipynb
+│   └── evaluation_version_1_final.ipynb    # FINAL pilot evaluation
 │
 ├── Tests/
 │   ├── test_forecast_core.py
@@ -266,6 +267,9 @@ ForecastingDebtCollections/
 ├── requirements.txt
 └── README.md
 ```
+
+Each numbered version fixed a specific shortcoming in the one before it; the
+highest version number in each folder is the one that shipped.
 
 The notebooks reproduce the full pipeline end to end: cleaning, feature engineering, the naive benchmark, and the version history behind the final forecast and pilot evaluation. Running them against real figures requires the private source data, which is not included here.
 
