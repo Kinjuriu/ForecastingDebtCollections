@@ -242,24 +242,27 @@ The modelling uses statistical and classical machine-learning methods. No deep-l
 ```text
 ForecastingDebtCollections/
 │
-├── notebooks/
-│   ├── 01_data_cleaning_public.ipynb
-│   ├── 02_feature_engineering_public.ipynb
-│   └── 03_public_baseline_forecast.ipynb
-│
-├── tests/
-│   └── test_forecasting_models.py
-│
-├── data/
-│   └── README.md
+├── final/
+│   ├── data_cleaning/
+│   │   └── data_cleaning_backbone.ipynb
+│   ├── feature_engineering/
+│   │   └── feature_engineering_backbone.ipynb
+│   └── model_building/
+│       ├── public_backbone_v0.ipynb        # naive benchmark
+│       ├── part1_forecast_v1.ipynb         # forecast, early version
+│       ├── part1_forecast_v2_core.ipynb    # forecast, shareable core
+│       ├── part1_forecast_v2_working.ipynb # forecast, working notebook
+│       ├── part1_forecast_v3_challenger.ipynb
+│       ├── part1_forecast_final.ipynb      # forecast, final
+│       ├── part2_pilot_v1.ipynb            # pilot evaluation, early version
+│       └── part2_pilot_final.ipynb         # pilot evaluation, final
 │
 ├── AI_WORKFLOW.md
 ├── requirements.txt
-├── LICENSE
 └── README.md
 ```
 
-The public notebooks demonstrate the workflow. The final forecasting, evaluation and confidential decision notebooks are maintained separately.
+The notebooks reproduce the full pipeline end to end: cleaning, feature engineering, the naive benchmark, and the version history behind the final forecast and pilot evaluation. Running them against real figures requires the private source data, which is not included here.
 
 ## Installation
 
@@ -374,7 +377,6 @@ This repository does not include:
 * Confidential company information.
 * Final private forecast outputs.
 * Final pilot-effect estimates.
-* Private modelling notebooks.
 * Conversations with AI assistants.
 * Prompts or full AI transcripts.
 
@@ -391,7 +393,7 @@ All analytical decisions, code changes and final interpretations were reviewed b
 ## Limitations
 
 * The original operational data cannot be shared publicly.
-* The public notebook is a simplified demonstration of the complete analysis.
+* The notebooks require the private source data to reproduce real forecast and pilot figures.
 * Forecasts depend on future sales and repayment behaviour remaining reasonably close to the stated assumptions.
 * Historical backtests cannot remove uncertainty about future sales-plan delivery.
 * The outreach programmes were observational rather than randomised.
