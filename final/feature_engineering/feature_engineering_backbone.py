@@ -14,7 +14,7 @@
 # ---
 
 # %% [markdown]
-# # Feature Engineering — PayGo Solar Collections Portfolio (v3)
+# # Feature Engineering Backbone
 #
 # This notebook is the **feature-engineering layer only**. It does not fit or select a forecasting model.
 #

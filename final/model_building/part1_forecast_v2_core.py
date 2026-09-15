@@ -13,7 +13,7 @@
 # ---
 
 # %% [markdown]
-# # Collections forecast: base model
+# # Collections forecast, Part 1: base model
 #
 # This is the base, shareable version of the July to September 2026 collections
 # forecast for the country. It is deliberately the simple, defensible core: a
@@ -70,7 +70,8 @@ print("setup ready")
 dlight_forecast.py
 ==================
 
-Core, tested functions for the collections forecast (base model). This module is the single source of truth: the Colab notebook writes
+Core, tested functions for the collections forecast (Part 1, base
+model). This module is the single source of truth: the Colab notebook writes
 this exact file with a %%writefile cell and then imports it, and the test file
 imports it too, so there is one place where the logic lives and nothing can
 quietly drift between the notebook and the tests.
@@ -392,7 +393,7 @@ def country_monthly_collections(panel: pd.DataFrame) -> pd.Series:
 
 def naive_baselines(panel: pd.DataFrame,
                     forecast_months=FORECAST_MONTHS) -> dict:
-    """Two floors that can be sanity-checked by hand: the recent three-month average,
+    """Two floors a reader can sanity-check by hand: the recent three-month average,
     and the same three months a year earlier.
 
     SHEETS 3-month average: =AVERAGE(Apr,May,Jun 2026)
@@ -851,7 +852,7 @@ print("Q3 base total:", round(float(base["total"].sum()), 0))
 # %% [markdown]
 # ## Step 6: floors to beat, and a top-down cross-check
 #
-# Two floors that can be checked by hand, the recent three-month average and the same
+# Two floors a reader can check by hand, the recent three-month average and the same
 # three months a year earlier, plus an ETS trend model on financed collections with
 # no twelve-month seasonal term because there is under two years of history. If the
 # bottom-up base and the top-down cross-check land close and both beat the naive
@@ -973,6 +974,8 @@ print("wrote and downloaded:", [p.name for p in OUT.iterdir()])
 # %% [markdown]
 # ## Stop here
 #
-# This notebook is done: one forecast table with a base, low and high per month,
-# a method that's easy to follow, a naive floor it beats, a rolling-origin backtest,
-# and a tornado chart showing which assumption moves the number most.
+# Part 1 is done: one forecast table with a base, low and high per month, a method
+# that a reader can follow, a naive floor it beats, a rolling-origin backtest and a
+# tornado. Part 2, the pilot evaluation with a difference-in-differences design
+# against the non-pilot regions, is the next notebook; this base notebook stays
+# clean and free of the internal reconciliation metrics.

@@ -13,8 +13,8 @@
 #     name: python3
 # ---
 
-# %% [markdown]
-# # Data Cleaning Only — PayGo Solar Collections Portfolio (v3)
+# %% [markdown] id="ff68a1ba"
+# # Data Cleaning Backbone
 #
 # **Scope:** clean, standardise, audit, split, and seal the five source datasets.
 #
@@ -67,7 +67,7 @@
 # - inspect East/West Apr–Jun residuals separately so pilot-era deviations do not silently redefine the base curve;
 # - evaluate pilot uplift causally in Part 2, not as a cleaning step.
 
-# %% [markdown]
+# %% [markdown] id="4b56000c"
 # ## 1. Upload the five original CSV files
 #
 # Select:
@@ -86,7 +86,7 @@
 #
 # Colab cannot force your browser to save directly to Desktop. When the browser asks where to save, choose Desktop.
 
-# %%
+# %% colab={"base_uri": "https://localhost:8080/", "height": 322} id="582fcab6" outputId="743b9d24-ec36-4b98-dc63-b288daa77b5e"
 from google.colab import files
 uploaded = files.upload()
 
@@ -94,10 +94,10 @@ print("Uploaded files:")
 for name in uploaded:
     print(" -", name)
 
-# %% [markdown]
+# %% [markdown] id="3f7871a2"
 # ## 2. Imports and configuration
 
-# %%
+# %% id="fe8a7e96"
 import io
 import re
 import zipfile
@@ -116,8 +116,9 @@ EXPECTED_DATA_START = pd.Timestamp("2024-10-01")
 ESTIMATION_END = pd.Timestamp("2026-03-31")
 VALIDATION_END = pd.Timestamp("2026-06-30")
 SEALED_TEST_END = pd.Timestamp("2026-09-30")
+EXPECTED_SEALED_MONTHS = pd.period_range("2026-07", "2026-09", freq="M")
 
-OUTPUT_ROOT = Path("/content/cleaning_v3")
+OUTPUT_ROOT = Path("/content/dlight_cleaning_v3")
 DEV_DIR = OUTPUT_ROOT / "development_through_jun_2026"
 DEV_AUDIT_DIR = OUTPUT_ROOT / "development_audit"
 SEALED_DIR = OUTPUT_ROOT / "SEALED_TEST_JUL_SEP_2026"
@@ -130,43 +131,69 @@ for p in [DEV_DIR, DEV_AUDIT_DIR, SEALED_DIR, FULL_DIR]:
 UNSEAL_FINAL_TEST_DIAGNOSTICS = False
 
 
-# %% [markdown]
+# %% [markdown] id="39a42ac3"
 # ## 3. Load files
 
-# %%
+# %% colab={"base_uri": "https://localhost:8080/"} id="91264968" outputId="815b3991-f5a1-465f-cac0-e3e15cc35b06"
 def normalise_filename(name):
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
-def find_uploaded_file(keyword):
-    key = normalise_filename(keyword)
-    matches = [
-        name for name in uploaded.keys()
-        if key in normalise_filename(name)
-    ]
-    if not matches:
-        raise FileNotFoundError(f"Could not find uploaded file matching: {keyword}")
-    if len(matches) > 1:
-        print(f"Multiple matches for {keyword}: {matches}; using {matches[0]}")
-    return matches[0]
+def uploaded_stem(name):
+    return normalise_filename(Path(name).stem)
 
-def read_uploaded_csv(keyword):
-    filename = find_uploaded_file(keyword)
-    return pd.read_csv(io.BytesIO(uploaded[filename]))
+def find_uploaded_file(expected_stem):
+    """
+    Prefer the exact CSV stem. If Colab renamed one upload, allow a unique
+    partial match. Ambiguous matches stop the run instead of choosing a file.
+    """
+    key = normalise_filename(expected_stem)
+    names = list(uploaded.keys())
 
-contracts_raw = read_uploaded_csv("contracts")
-payments_raw = read_uploaded_csv("payments")
-calls_raw = read_uploaded_csv("calls")
-service_raw = read_uploaded_csv("service_tickets")
-outreach_raw = read_uploaded_csv("collections_outreach")
+    exact = [name for name in names if uploaded_stem(name) == key]
+    if len(exact) == 1:
+        return exact[0]
+    if len(exact) > 1:
+        raise RuntimeError(
+            f"More than one exact upload matches {expected_stem!r}: {exact}. "
+            "Remove duplicates and upload the five source files again."
+        )
+
+    partial = [name for name in names if key in uploaded_stem(name)]
+    if len(partial) == 1:
+        return partial[0]
+    if not partial:
+        raise FileNotFoundError(
+            f"Could not find an uploaded CSV matching {expected_stem!r}."
+        )
+    raise RuntimeError(
+        f"Ambiguous uploads for {expected_stem!r}: {partial}. "
+        "Rename the intended source to its standard filename and rerun."
+    )
+
+def read_uploaded_csv(expected_stem):
+    filename = find_uploaded_file(expected_stem)
+    return filename, pd.read_csv(io.BytesIO(uploaded[filename]))
+
+selected_input_files = {}
+
+selected_input_files["contracts"], contracts_raw = read_uploaded_csv("contracts")
+selected_input_files["payments"], payments_raw = read_uploaded_csv("payments")
+selected_input_files["calls"], calls_raw = read_uploaded_csv("calls")
+selected_input_files["service_tickets"], service_raw = read_uploaded_csv("service_tickets")
+selected_input_files["collections_outreach"], outreach_raw = read_uploaded_csv("collections_outreach")
+
+print("Selected input files:")
+for dataset, filename in selected_input_files.items():
+    print(f" - {dataset}: {filename}")
 
 # Raw copies remain untouched.
-print("Raw files loaded. Detailed diagnostics are intentionally deferred until after time-layer assignment.")
+print("Raw files loaded. Detailed diagnostics are deferred until after time-layer assignment.")
 
 
-# %% [markdown]
+# %% [markdown] id="1a483717"
 # ## 4. Cleaning helpers
 
-# %%
+# %% id="e3a2b905"
 def clean_column_names(df):
     out = df.copy()
     out.columns = (
@@ -268,7 +295,7 @@ def dev_mask(df, date_col):
     return d <= VALIDATION_END
 
 
-# %% [markdown]
+# %% [markdown] id="6630ba14"
 # ## 5. Contracts: structural cleaning
 #
 # Missing values in `customer_gender`, `household_size`, and `occupation` are preserved. They are optional fields, not automatically errors.
@@ -285,7 +312,7 @@ def dev_mask(df, date_col):
 #
 # The correction remains an explicit assumption, not a silent rewrite.
 
-# %%
+# %% colab={"base_uri": "https://localhost:8080/", "height": 161} id="28d9c3e6" outputId="78ae6323-a31e-4c3a-bdee-3c3fc0fd3ec7"
 contracts = clean_column_names(contracts_raw)
 
 contracts["source_row_id"] = np.arange(len(contracts))
@@ -344,10 +371,10 @@ print(
     int(contracts_dev_diag["contractid"].duplicated(keep=False).sum())
 )
 
-# %% [markdown]
+# %% [markdown] id="86f761ca"
 # ### Deposit-scale sanity check — through Jun-2026 only
 
-# %%
+# %% colab={"base_uri": "https://localhost:8080/", "height": 433} id="7f095d97" outputId="e8fd6e20-0640-44c0-97f7-56c63723b2ce"
 fin_dev = contracts_dev_diag[
     contracts_dev_diag["contract_type"].eq("FINANCED")
 ].copy()
@@ -407,7 +434,7 @@ print(
     "the scale-error hypothesis is more credible. If not, quarantine and revisit rather than trusting the correction."
 )
 
-# %% [markdown]
+# %% [markdown] id="cf95f23b"
 # ## 6. Payments: structural cleaning and duplicate policy
 #
 # The data dictionary describes `total_paid` as the **total paid in that contract-month**.
@@ -420,7 +447,7 @@ print(
 # - zero and negative payments are flagged rather than deleted;
 # - an immutable `source_row_id` prevents fragile joins on floating-point payment amounts.
 
-# %%
+# %% colab={"base_uri": "https://localhost:8080/", "height": 489} id="7b25b40a" outputId="4b365bb7-6f59-4c0a-8cdc-afeaa2476c4c"
 payments = clean_column_names(payments_raw)
 payments["source_row_id"] = np.arange(len(payments))
 
@@ -436,12 +463,50 @@ payments["pay_month_original"] = payments["pay_month"]
 payments["pay_month"] = to_month_end(
     parse_mixed_date(payments["pay_month"])
 )
+payments["pay_month_parse_failed"] = (
+    payments["pay_month_original"].notna()
+    & payments["pay_month"].isna()
+)
 payments["time_layer"] = assign_time_layer(payments["pay_month"])
 
+payments["total_paid_original"] = payments["total_paid"]
 payments["total_paid"] = pd.to_numeric(
     payments["total_paid"],
     errors="coerce"
 )
+payments["total_paid_parse_failed"] = (
+    payments["total_paid_original"].notna()
+    & payments["total_paid"].isna()
+)
+
+full_payment_input_checks = pd.DataFrame({
+    "check": [
+        "raw_payment_rows",
+        "missing_contractid_any_period",
+        "invalid_pay_month_any_period",
+        "invalid_total_paid_any_period",
+    ],
+    "value": [
+        len(payments),
+        int(payments["contractid"].isna().sum()),
+        int(payments["pay_month_parse_failed"].sum()),
+        int(payments["total_paid_parse_failed"].sum()),
+    ]
+})
+
+display(full_payment_input_checks)
+
+if payments["pay_month_parse_failed"].any():
+    raise ValueError(
+        "Payment dates failed to parse. Review pay_month_original before "
+        "creating development or sealed outputs."
+    )
+
+if payments["total_paid_parse_failed"].any():
+    raise ValueError(
+        "Some payment amounts are not numeric. Review total_paid_original "
+        "before creating outputs."
+    )
 
 payments["before_expected_data_start"] = (
     payments["pay_month"].notna()
@@ -506,7 +571,7 @@ payment_checks_dev = pd.DataFrame({
     "check": [
         "rows_through_jun_after_exact_dedup",
         "missing_contractid",
-        "invalid_pay_month",
+        "invalid_pay_month_any_period",
         "missing_total_paid",
         "rows_participating_in_exact_duplicate_groups",
         "conflicting_contract_month_rows",
@@ -517,7 +582,7 @@ payment_checks_dev = pd.DataFrame({
     "value": [
         len(payments_dev_diag),
         int(payments_dev_diag["contractid"].isna().sum()),
-        int(payments_dev_diag["pay_month"].isna().sum()),
+        int(payments["pay_month_parse_failed"].sum()),
         int(payments_dev_diag["total_paid"].isna().sum()),
         len(payment_exact_duplicates_dev),
         len(payment_conflicts_dev),
@@ -529,7 +594,7 @@ payment_checks_dev = pd.DataFrame({
 
 display(payment_checks_dev)
 
-# %% [markdown]
+# %% [markdown] id="ffe69065"
 # ## 7. Calls: deterministic reason cleanup
 #
 # The calls table is event-level. Duplicate-looking calls are flagged but not removed because two same-day calls can both be real.
@@ -540,7 +605,7 @@ display(payment_checks_dev)
 #
 # No synonym mapping is learned from the sealed period. The value-count diagnostic shown below uses calls through Jun-2026 only.
 
-# %%
+# %% colab={"base_uri": "https://localhost:8080/", "height": 287} id="0d0f8859" outputId="57c2db90-bba9-4a83-9801-222efc999124"
 calls = clean_column_names(calls_raw)
 calls["source_row_id"] = np.arange(len(calls))
 
@@ -589,7 +654,7 @@ display(
     .to_frame("rows_through_jun_2026")
 )
 
-# %% [markdown]
+# %% [markdown] id="8f5216ac"
 # ## 8. Service tickets: development-only vocabulary review
 #
 # The mapping is intentionally based on known business meanings and is reviewed using **ticket counts through Jun-2026 only**.
@@ -606,7 +671,7 @@ display(
 #
 # These are different reported failure modes and should not be merged.
 
-# %%
+# %% colab={"base_uri": "https://localhost:8080/", "height": 614} id="714bcf26" outputId="b721abd7-b97f-43af-aa83-c715c11ac155"
 service = clean_column_names(service_raw)
 service["source_row_id"] = np.arange(len(service))
 
@@ -644,10 +709,10 @@ ticket_reason_dev_counts = (
 
 display(ticket_reason_dev_counts)
 
-# %% [markdown]
+# %% [markdown] id="075ef259"
 # ### Fixed ticket-reason mapping
 
-# %%
+# %% colab={"base_uri": "https://localhost:8080/", "height": 900} id="6e47852f" outputId="f600e285-58ab-4082-cb2a-c78712b86b37"
 ticket_reason_map = {
     # Battery
     "battery fault": "BATTERY_FAULT",
@@ -753,7 +818,7 @@ if len(unmapped_ticket_reasons_dev):
 else:
     print("No unmapped ticket reasons through Jun-2026.")
 
-# %% [markdown]
+# %% [markdown] id="168a0ed6"
 # ## 9. Collections outreach: structural cleaning only
 #
 # The table is not country-wide history. It represents regional pilots.
@@ -761,7 +826,7 @@ else:
 # This notebook standardises its fields and audits integrity but does **not** estimate an uplift.
 # Visible summaries use data through Jun-2026 only.
 
-# %%
+# %% colab={"base_uri": "https://localhost:8080/", "height": 143} id="6d2ec35f" outputId="a5a4e2b0-3ff1-498a-cf40-f07c8a27e756"
 outreach = clean_column_names(outreach_raw)
 outreach["source_row_id"] = np.arange(len(outreach))
 
@@ -828,14 +893,14 @@ display(
     .to_frame("rows_through_jun_2026")
 )
 
-# %% [markdown]
+# %% [markdown] id="90c6c8f7"
 # ## 10. Cross-file orphan IDs
 #
 # Orphan records are flagged, not deleted.
 #
 # Visible counts are limited to records through Jun-2026.
 
-# %%
+# %% colab={"base_uri": "https://localhost:8080/", "height": 175} id="6e6fd548" outputId="0b9c5a33-d4ca-43a1-8fa3-71b58f01c4a1"
 contract_id_set = set(
     contracts["contractid"].dropna()
 )
@@ -873,7 +938,7 @@ orphan_summary_dev = pd.DataFrame({
 
 display(orphan_summary_dev)
 
-# %% [markdown]
+# %% [markdown] id="09980b63"
 # ## 11. Events before sale month
 #
 # Same-month events are allowed because `sales_month` has only month-level precision.
@@ -882,7 +947,7 @@ display(orphan_summary_dev)
 #
 # Nothing is auto-deleted.
 
-# %%
+# %% colab={"base_uri": "https://localhost:8080/", "height": 175} id="ade7d423" outputId="26ace3d1-9693-481c-b002-0baa1abca1a5"
 contract_dates = contracts[
     ["contractid", "sales_month"]
 ].copy()
@@ -933,7 +998,7 @@ before_sale_summary_dev = pd.DataFrame({
 
 display(before_sale_summary_dev)
 
-# %% [markdown]
+# %% [markdown] id="2942afac"
 # ## 12. Payments after apparent payoff — row-ID-safe audit
 #
 # A payment is flagged when cumulative **prior positive payments** are already at or above contract price.
@@ -943,7 +1008,7 @@ display(before_sale_summary_dev)
 # - conflicting duplicate contract-months are excluded from this particular audit because their monthly total is unresolved;
 # - the result is carried back using `source_row_id`, never by floating-point equality.
 
-# %%
+# %% colab={"base_uri": "https://localhost:8080/"} id="416f4243" outputId="8356c855-e085-4c04-84e4-8b4b05fae693"
 payments["payment_after_apparent_payoff"] = False
 payments["payoff_audit_eligible"] = (
     ~payments["conflicting_contract_month"]
@@ -1011,7 +1076,7 @@ print(
     )
 )
 
-# %% [markdown]
+# %% [markdown] id="c216f28c"
 # ## 13. Partial / thin month diagnostic — development period only
 #
 # This checks **extraction completeness**, not business performance.
@@ -1033,7 +1098,7 @@ print(
 #
 # No month is automatically deleted.
 
-# %%
+# %% colab={"base_uri": "https://localhost:8080/", "height": 759} id="3b92efaf" outputId="7eaa9c05-9bd5-414d-abd6-f530cfad5855"
 payments_dev_for_diagnostic = payments[
     payments["pay_month"] <= VALIDATION_END
 ].copy()
@@ -1086,7 +1151,19 @@ for col in [
 
 display(monthly_payment_diagnostic)
 
-# %% [markdown]
+# %% [markdown] id="B7HmJE9Jqsf5"
+# ### Full-input guardrails
+#
+# Before the split, the notebook now checks the complete payments source for
+# unparseable dates and amounts. After the split, it requires payment coverage in
+# July, August and September 2026. These checks validate extraction completeness;
+# they do not use Q3 outcomes to fit or change a model.
+#
+# The sealed ZIP also contains a three-row country actuals file for scoring the
+# already-frozen forecasts without sharing customer-level payment data.
+#
+
+# %% [markdown] id="f23c0f02"
 # ## 14. Optional sealed-period completeness diagnostic
 #
 # Do not run this while building the forecast.
@@ -1095,7 +1172,7 @@ display(monthly_payment_diagnostic)
 #
 # `UNSEAL_FINAL_TEST_DIAGNOSTICS = True`
 
-# %%
+# %% colab={"base_uri": "https://localhost:8080/"} id="e0b8ebfc" outputId="2af13599-b5a4-480b-e7ed-98d70dfd8c7d"
 if UNSEAL_FINAL_TEST_DIAGNOSTICS:
     sealed_payment_diagnostic = (
         payments[
@@ -1124,15 +1201,31 @@ else:
         "SEALED: Jul-Sep payment diagnostics are not displayed."
     )
 
+# %% colab={"base_uri": "https://localhost:8080/", "height": 339} id="wsOJp5WxtSGz" outputId="dc39dbcc-eefc-4e69-aaf0-33335df9452b"
+payment_dates = to_month_end(
+    parse_mixed_date(payments_raw["pay_month"])
+)
 
-# %% [markdown]
+print("First payment month:", payment_dates.min())
+print("Last payment month:", payment_dates.max())
+
+display(
+    payment_dates
+    .dt.to_period("M")
+    .value_counts()
+    .sort_index()
+    .tail(6)
+)
+
+
+# %% [markdown] id="73420a68"
 # ## 15. Split cleaned data into development and sealed files
 #
 # Existing contracts sold on or before Jun-2026 remain in development because their terms were known at the forecast origin.
 #
 # New Jul–Sep contracts and Jul–Sep payment/event outcomes are placed in the sealed partition.
 
-# %%
+# %% colab={"base_uri": "https://localhost:8080/", "height": 358} id="53806181" outputId="8164e3ed-cc66-4131-ac01-b8caea1c5610"
 def split_dev_sealed(df, date_col):
     d = pd.to_datetime(
         df[date_col],
@@ -1164,6 +1257,69 @@ service_dev, service_sealed = split_dev_sealed(
 outreach_dev, outreach_sealed = split_dev_sealed(
     outreach, "contact_month"
 )
+
+def require_month_coverage(df, date_col, expected_months, dataset_name):
+    observed = set(
+        pd.to_datetime(df[date_col], errors="coerce")
+        .dropna()
+        .dt.to_period("M")
+    )
+    expected = set(expected_months)
+    missing = sorted(expected - observed)
+    if missing:
+        missing_text = ", ".join(str(month) for month in missing)
+        raise RuntimeError(
+            f"{dataset_name} is missing required sealed month(s): {missing_text}. "
+            "The sealed forecast cannot be scored from this extract. Check the "
+            "selected source filename and the raw payment date range."
+        )
+
+require_month_coverage(
+    payments_sealed,
+    "pay_month",
+    EXPECTED_SEALED_MONTHS,
+    "payments"
+)
+
+# This is the country-level target used to score the frozen forecast. It uses
+# the source-reported monthly cash after exact duplicate removal, matching the
+# historical forecast target. No customer identifiers are included.
+sealed_country_actuals = (
+    payments_sealed
+    .groupby("pay_month", as_index=False)["total_paid"]
+    .sum()
+    .rename(columns={
+        "pay_month": "month",
+        "total_paid": "actual_total_collections_usd"
+    })
+    .sort_values("month")
+)
+
+sealed_payment_completeness = (
+    payments_sealed
+    .groupby("pay_month", as_index=False)
+    .agg(
+        payment_rows=("contractid", "size"),
+        unique_paying_contracts=("contractid", "nunique")
+    )
+    .rename(columns={"pay_month": "month"})
+    .sort_values("month")
+)
+
+sealed_country_actuals.to_csv(
+    SEALED_DIR / "SEALED_country_collections_actuals_jul_sep_2026.csv",
+    index=False
+)
+sealed_payment_completeness.to_csv(
+    SEALED_DIR / "SEALED_payment_completeness_jul_sep_2026.csv",
+    index=False
+)
+
+if UNSEAL_FINAL_TEST_DIAGNOSTICS:
+    display(sealed_country_actuals)
+    display(sealed_payment_completeness)
+else:
+    print("PASS: sealed payments cover Jul, Aug and Sep 2026. Values remain hidden.")
 
 contracts_dev.to_csv(
     DEV_DIR / "contracts_clean_through_jun_2026.csv",
@@ -1209,14 +1365,14 @@ outreach_sealed.to_csv(
 
 print("Development and sealed datasets written.")
 
-# %% [markdown]
+# %% [markdown] id="b4ca27f8"
 # ## 16. Development-period audit files
 #
 # Only through-Jun audits go into the normal audit ZIP.
 #
 # Any anomaly records from Jul–Sep are placed inside the **sealed** directory so you do not accidentally inspect them.
 
-# %%
+# %% id="c600e967"
 # Development-only audits
 payment_exact_duplicates_dev = payment_exact_duplicates_full[
     dev_mask(payment_exact_duplicates_full, "pay_month")
@@ -1353,10 +1509,10 @@ monthly_payment_diagnostic.to_csv(
 
 print("Development audits written.")
 
-# %% [markdown]
+# %% [markdown] id="823c389a"
 # ## 17. Sealed anomaly audits — written but not displayed
 
-# %%
+# %% id="8926a6cb"
 # These files stay INSIDE the sealed ZIP.
 # They are never displayed while the test is sealed.
 
@@ -1407,14 +1563,14 @@ for filename, df, flag in [
 
 print("Sealed audit files written without displaying their contents.")
 
-# %% [markdown]
+# %% [markdown] id="c3abb8e2"
 # ## 18. Development cleaning summary only
 #
 # The summary intentionally stops at Jun-2026.
 #
 # Duplicate note: `rows_participating_in_exact_duplicate_groups` counts **all** rows in duplicate groups. If duplicates mostly come in pairs, the number physically removed is roughly half that count because one copy is retained.
 
-# %%
+# %% id="2d438178"
 cleaning_summary_dev = pd.DataFrame([
     ["contracts_rows_through_jun", len(contracts_dev)],
     ["contracts_gender_missing", int(contracts_dev["customer_gender"].isna().sum())],
@@ -1455,12 +1611,12 @@ cleaning_summary_dev.to_csv(
 
 display(cleaning_summary_dev)
 
-# %% [markdown]
+# %% [markdown] id="1b00baae"
 # ## 19. Full cleaned files — reproducibility only
 #
 # These are written so the cleaning is reproducible, but do **not** use or inspect the full ZIP while building the forecast.
 
-# %%
+# %% id="cba3fb8e"
 # Drop temporary helper key before exporting service.
 service_export = service.drop(
     columns=["_ticket_reason_key"]
@@ -1490,10 +1646,10 @@ outreach.to_csv(
 print("Full cleaned copies written, but should remain unopened during model development.")
 
 
-# %% [markdown]
+# %% [markdown] id="e59564a4"
 # ## 20. Package outputs
 
-# %%
+# %% id="d3174743"
 def zip_directory(source_dir, zip_path):
     with zipfile.ZipFile(
         zip_path,
@@ -1523,7 +1679,7 @@ print("Development audit:", DEV_AUDIT_ZIP)
 print("SEALED:", SEALED_ZIP)
 print("Full reproducibility:", FULL_ZIP)
 
-# %% [markdown]
+# %% [markdown] id="b91af5bb"
 # ## 21. Download buttons
 #
 # For normal work, download:
@@ -1535,7 +1691,7 @@ print("Full reproducibility:", FULL_ZIP)
 #
 # The full reproducibility ZIP is optional.
 
-# %%
+# %% id="6193e96f"
 from google.colab import files
 
 files.download(str(DEV_ZIP))
@@ -1543,7 +1699,7 @@ files.download(str(DEV_AUDIT_ZIP))
 files.download(str(SEALED_ZIP))
 files.download(str(FULL_ZIP))
 
-# %% [markdown]
+# %% [markdown] id="12e1c21b"
 # # Stop here
 #
 # This notebook ends at cleaning and sealing.

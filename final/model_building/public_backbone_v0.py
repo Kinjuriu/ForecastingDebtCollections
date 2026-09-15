@@ -14,11 +14,11 @@
 # ---
 
 # %% [markdown]
-# # Collections forecasting: public baseline
+# # Public Backbone v0 — naive collections benchmark
 #
 # This is a deliberately limited, reproducible benchmark suitable for GitHub. It uses only the aggregate country-month feature table and asks one question: **does a later forecasting model improve on simply carrying forward the recent three-month average?**
 #
-# Scope: this notebook contains no company data, no row-level features, no final modelling pipeline, and no saved forecast values. Keep all outputs cleared before committing it.
+# Privacy boundary: this notebook contains no company data, no row-level features, no final modelling pipeline, no saved forecast values, and no AI-assistant transcripts. Keep all outputs cleared before committing it.
 
 # %% [markdown]
 # ## Method
@@ -128,4 +128,4 @@ except ImportError:
 # %% [markdown]
 # ## Before committing to GitHub
 #
-# Use **Edit → Clear all outputs**, confirm that no CSV/ZIP/data file is staged, and commit only this notebook.
+# Use **Edit → Clear all outputs**, confirm that no CSV/ZIP/data file is staged, and commit only this notebook plus a short README. The private modelling notebook and its results remain local.
